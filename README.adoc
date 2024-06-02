@@ -1,0 +1,19 @@
+= RISC-V Kernel
+
+.Build the kernel
+[source,bash]
+zig build
+
+.Run with QEMU
+[source,bash]
+zig build run
+
+.Debug with GDB
+[source,bash]
+nohup zig build run -- -s -S &
+riscv64-unknown-elf-gdb -x .gdbinit
+
+.Stop QEMU
+[source,bash]
+fg
+ctrl-c
