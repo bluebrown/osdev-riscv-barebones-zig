@@ -3,15 +3,16 @@
 // from my expxierence when using langauges such as rust or zig, they dont
 // always get it right.
 .attribute arch, "rv64g" // riscv64 general
-.option    arch, -c      // explicitly disable c extensions, just for demo
+.option    arch, +c      // enable c extensions, just for demo
+
+.equ STACK_SIZE, 1096 * 16
+.equ MAX_HARTS, 8
 
 .section .text
 .global  _start
-.equ     MAX_HARTS, 16
-.equ     STACK_SIZE, 4096
+.type    _start, @function
 
 _start:
-
 	// set the global pointer and make sure
 	// "gp relaxation" is disabled for this.
 	// is required. It will avoid relative
