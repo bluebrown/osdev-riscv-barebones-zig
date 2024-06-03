@@ -50,8 +50,5 @@ SECTIONS {
 
       /* both the global adn the stack pointer must be
        * loaded into gp and sp respectively */
-    . = ALIGN(128);
-    . += 8 * 16K;
-    __stack_top$ = .;
-    . = ALIGN(128);
+    __stack_top$ = __global_pointer$ + 1K;
 }
