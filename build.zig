@@ -2,6 +2,8 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
     const k = b.addExecutable(.{
+        .name = "kernel.elf",
+        .root_source_file = b.path("main.zig"),
         .optimize = b.standardOptimizeOption(.{}),
         .target = b.resolveTargetQuery(.{
             .cpu_arch = .riscv64,
@@ -9,9 +11,11 @@ pub fn build(b: *std.Build) !void {
             .abi = .none,
             .ofmt = .elf,
         }),
-        .name = "kernel.elf",
+        // [NOTE]
+        //  medium code model has been choose, as this allows to adress +-2GB
+        //  of memory, relative to the program counter. This is useful when
+        //  when adressing peripherals and other units on the memory bus.
         .code_model = .medium,
-        .root_source_file = b.path("main.zig"),
     });
 
     k.addAssemblyFile(b.path("entry.S"));
@@ -19,7 +23,11 @@ pub fn build(b: *std.Build) !void {
 
     b.installArtifact(k);
 
-    const qemu = b.addSystemCommand(&.{
+    // some useful args to pass via
+    // `zig build run -- <args>`:
+    // * -s -S ; for debugging
+    // * -smp <n> ; set n cores
+    const q = b.addSystemCommand(&.{
         "qemu-system-riscv64",
         "-machine",
         "virt",
@@ -29,18 +37,16 @@ pub fn build(b: *std.Build) !void {
         "stdio",
         "-bios",
         "none",
-        "-smp",
-        "1",
         "-kernel",
         "zig-out/bin/kernel.elf",
     });
 
-    qemu.step.dependOn(b.getInstallStep());
+    q.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {
-        qemu.addArgs(args);
+        q.addArgs(args);
     }
 
-    const run = b.step("run", "Run the kernel with qemu virt machine");
-    run.dependOn(&qemu.step);
+    const r = b.step("run", "Run the kernel with qemu virt machine");
+    r.dependOn(&q.step);
 }

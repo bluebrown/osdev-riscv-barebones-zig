@@ -9,13 +9,15 @@
 
 .section .text
 .global  _start
-.type    _start, @function
+
+// help the debugger
+.type _start, @function
 
 _start:
 	// set the global pointer and make sure
-	// "gp relaxation" is disabled for this.
-	// is required. It will avoid relative
-	// addressing problems.
+	// the linker will not optimize this away,
+	// by is disabled linker relaxation.
+	// also known as "gp releaxation".
 	.option push
 	.option norelax
 	la      gp, __global_pointer$
@@ -29,8 +31,8 @@ _start:
 	// to identify the current thread, later.
 	mv tp, a3
 
-	// set the stack pointer with an offset
-	// of (hartid + 1) * STACK_SIZE.
+	// offset each harts sp, by hartid*size.
+	// this creates a seperate stack for each
 	addi a0, a3, 1
 	li   a1, STACK_SIZE
 	mul  a0, a0, a1
@@ -40,7 +42,7 @@ _start:
 	// call the main function.
 	// main will run in machine mode and
 	// will be responsible for boostrapping
-	// the hart in supervisor mode.
+	// the hart into supervisor mode.
 	tail main
 
 	// deadlock, if main returns
@@ -48,3 +50,6 @@ _start:
 deadlock:
 	wfi
 	j deadlock
+
+	// help the debugger
+	.size _start, .- _start
