@@ -12,31 +12,31 @@ SECTIONS {
     /* qemu virt machine dram base */
     . = 0x80000000;
 
-    .text ALIGN(8) : {
+    .text ALIGN(16) : {
         *(.text .text*);
     }
 
-    .rodata ALIGN(8) :  {
+    .rodata ALIGN(16) :  {
         *(.rodata .rodata*);
     }
 
-    .data ALIGN(8) : {
+    .data ALIGN(16) : {
         __DATA_BEGIN__ = .;
         *(.data .data*);
     }
 
     /* pack small data for more effient access */
-    .sdata ALIGN(8) : {
+    .sdata ALIGN(16) : {
         __SDATA_BEGIN__ = .;
         *(.srodata .srodata*);
         *(.sdata .sdata*);
     }
 
-    .sbss ALIGN(8) : {
+    .sbss ALIGN(16) : {
         *(.sbss .sbss*);
     }
 
-    .bss ALIGN(8) : {
+    .bss ALIGN(16) : {
         *(.bss .bss.*)
     }
     __BSS_END__ = .;
