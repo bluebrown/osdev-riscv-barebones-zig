@@ -1,4 +1,4 @@
-// qemu's virt machine type places uart at this adress.
+/// qemu's virt machine type places uart at this adress
 const uart: *volatile u8 = @ptrFromInt(0x10000000);
 
 pub fn print(str: []const u8) void {

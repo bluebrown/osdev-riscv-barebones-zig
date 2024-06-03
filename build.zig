@@ -11,10 +11,10 @@ pub fn build(b: *std.Build) !void {
         }),
         .name = "kernel.elf",
         .code_model = .medium,
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("main.zig"),
     });
 
-    k.addAssemblyFile(b.path("src/entry.S"));
+    k.addAssemblyFile(b.path("entry.S"));
     k.setLinkerScript(b.path("linker.ld"));
 
     b.installArtifact(k);
@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) !void {
         "-bios",
         "none",
         "-smp",
-        "2",
+        "1",
         "-kernel",
         "zig-out/bin/kernel.elf",
     });

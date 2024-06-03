@@ -17,3 +17,10 @@ riscv64-unknown-elf-gdb -x .gdbinit
 [source,bash]
 fg
 ctrl-c
+
+== Resources
+
+* https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc[RISC-V CC]
+* https://github.com/riscv-non-isa/riscv-asm-manual/blob/main/riscv-asm.md[RISC-V ASM]
+* https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc[RISC-V ELF]
+* https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c#L70[QEMU Virt Memory Map]
