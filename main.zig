@@ -18,11 +18,11 @@ export fn main() noreturn {
     csr.clear("mstatus", MSTATUS_MMP_MASK);
     csr.set("mstatus", MSTATUS_MMP_S);
 
-    // the (m)achine (e)xception (p)rogram (c)ounter hold the return adress
+    // the (m)achine (e)xception (p)rogram (c)ounter holds the return adress
     // used by mret.
     csr.write("mepc", @intFromPtr(&kernel));
 
-    // diable supervirsor address translation and protection.
+    // disable supervirsor address translation and protection.
     // The actual kernel should set this up.
     csr.write("satp", 0);
 
