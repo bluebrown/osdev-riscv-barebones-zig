@@ -6,7 +6,6 @@
 .option    arch, +c      // enable c extensions, just for demo
 
 .equ STACK_SIZE, 1096 * 16
-.equ MAX_HARTS, 8
 
 .section .text
 .global  _start
@@ -33,7 +32,7 @@ _start:
 	// set the stack pointer with an offset
 	// of (hartid + 1) * STACK_SIZE.
 	addi a0, a3, 1
-	li   a1, STACK_SIZE * MAX_HARTS
+	li   a1, STACK_SIZE
 	mul  a0, a0, a1
 	la   sp, __stack_top$
 	add  sp, sp, a0
