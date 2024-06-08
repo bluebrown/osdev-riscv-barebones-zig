@@ -1,22 +1,16 @@
 const uart = @import("uart.zig");
 
 pub export fn main() noreturn {
-    uart.line.wordLength = 3; // 8 bits
-    uart.line.stopBits = 0; // 1 stop bit
-    uart.line.parity = 0; // no parity
-    uart.line.divisorLatchAccess = 1; // enable divisor latch access
-    const divisor = 1; // 115200 baud
-    uart.tx.port = divisor & 0xff;
-    uart.rx.port = (divisor >> 8) & 0xff;
-    uart.line.divisorLatchAccess = 0; // disable divisor latch access
-    uart.fifo.enable = 1; // enable FIFO
-    uart.fifo.irqTriggerLvl = 0; // 1 byte trigger level
-    uart.irq.txReady = 1; // enable thr empty interrupt
+    uart.fifo.enable = 1;
+    uart.irq.txReady = 1;
 
-    if (uart.info.IrqPending == 0)
+    if (uart.info.boardInfo == 3)
+        println("fifo enabled");
+
+    if (uart.info.irqPending == 0)
         println("uart irq pending");
 
-    if (uart.info.IrqId == 1)
+    if (uart.info.irqId == 1)
         println("uart irq = thr empty");
 
     while (true)

@@ -23,11 +23,11 @@ pub fn read() u8 {
     return c;
 }
 
-const RxBuffer = packed struct { port: u8 };
+const RxBuffer = packed struct(u8) { port: u8 };
 
-const TxBuffer = packed struct { port: u8 };
+const TxBuffer = packed struct(u8) { port: u8 };
 
-pub const IrqFlags = packed struct {
+pub const IrqFlags = packed struct(u8) {
     rxReady: u1,
     txReady: u1,
     lineStatus: u1,
@@ -37,15 +37,15 @@ pub const IrqFlags = packed struct {
     reserved: u2,
 };
 
-pub const IrqInfo = packed struct {
-    IrqPending: u1,
-    IrqId: u3,
+pub const IrqInfo = packed struct(u8) {
+    irqPending: u1,
+    irqId: u3,
     reserved1: u1,
     fifo64: u1,
     boardInfo: u2,
 };
 
-pub const FifoControl = packed struct {
+pub const FifoControl = packed struct(u8) {
     enable: u1,
     clearReceive: u1,
     clearTransmit: u1,
@@ -55,7 +55,7 @@ pub const FifoControl = packed struct {
     irqTriggerLvl: u2,
 };
 
-pub const LineControl = packed struct {
+pub const LineControl = packed struct(u8) {
     wordLength: u2,
     stopBits: u1,
     parity: u3,
@@ -63,7 +63,7 @@ pub const LineControl = packed struct {
     divisorLatchAccess: u1,
 };
 
-pub const LineStatus = packed struct {
+pub const LineStatus = packed struct(u8) {
     rxReady: u1,
     errOverrun: u1,
     errParity: u1,
