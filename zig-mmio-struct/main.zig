@@ -1,7 +1,6 @@
 const uart = @import("uart.zig");
 
 pub export fn main() noreturn {
-    // configure uart
     uart.line.wordLength = 3; // 8 bits
     uart.line.stopBits = 0; // 1 stop bit
     uart.line.parity = 0; // no parity
@@ -14,7 +13,6 @@ pub export fn main() noreturn {
     uart.fifo.irqTriggerLvl = 0; // 1 byte trigger level
     uart.irq.txReady = 1; // enable thr empty interrupt
 
-    // enable uart
     if (uart.info.IrqPending == 0)
         println("uart irq pending");
 
@@ -26,9 +24,7 @@ pub export fn main() noreturn {
 }
 
 fn println(msg: []const u8) void {
-    for (msg) |c| {
-        uart.tx.port = c;
-    }
-    uart.tx.port = '\n';
-    uart.tx.port = '\r';
+    for (msg) |c|
+        uart.write(c);
+    uart.write('\n');
 }

@@ -8,17 +8,18 @@ pub const fifo: *volatile FifoControl = @ptrFromInt(VIRT_UART0 + 2);
 pub const line: *volatile LineControl = @ptrFromInt(VIRT_UART0 + 3);
 pub const status: *volatile LineStatus = @ptrFromInt(VIRT_UART0 + 5);
 
-pub fn read(c: u8) void {
-    while (!status.txReady) {}
+pub fn write(c: u8) void {
+    while (status.txReady == 0) {}
+    if (c == '\n')
+        tx.port = '\r';
     tx.port = c;
 }
 
-pub fn write() u8 {
-    while (!status.rxReady) {}
+pub fn read() u8 {
+    while (status.rxReady == 0) {}
     var c = rx.port;
-    if (c == '\r') {
+    if (c == '\r')
         c = '\n';
-    }
     return c;
 }
 
