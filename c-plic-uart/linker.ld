@@ -24,7 +24,7 @@ SECTIONS {
         *(.sbss .sbss*);
     }
 
-    .bss ALIGN(16) : {
+    .bss ALIGN(64) : {
         *(.bss .bss.*)
     }
     __BSS_END__ = .;

@@ -2,15 +2,7 @@
 #include <stdint.h>
 
 unsigned char *volatile UART = (unsigned char *)0x10000000;
-
-// [NOTE]
-// when trying to use PLIC like UART:
-//
-//     uint32_t *volatile PLIC = (uint32_t *)0xc000000;
-//
-// The CPU raises an Store/AMO access fault exception,
-// for writes. And a Load access fault exception,
-// for reads.
+uint32_t *volatile PLIC = (uint32_t *)0xc000000;
 
 void print(const char *s);
 void print_exception(int code);
@@ -18,7 +10,7 @@ void print_interupt(int code);
 char *itoa(size_t base, size_t num);
 void irq_handler();
 
-static inline size_t ctx() {
+static inline size_t get_context() {
   size_t hartid;
   asm volatile("csrr %0, mhartid" : "=r"(hartid));
   return (hartid << 1) | 0; // machine mode 0
@@ -29,26 +21,31 @@ int main() {
 
   // get the context of the current hardware thread.
   // assumes machine mode.
-  size_t c = ctx();
+  size_t ctx = get_context();
 
   // the uart irq id, can be found in qemus device tree:
   //
   //     qemu-system-riscv32 -nographic -machine virt,dumpdtb=virt.out
   //     dtdump virt.out > qemu.fdt.txt
   //
-  size_t id = 0xA;
+  size_t src = 0xA;
 
   // set trap vector
   asm volatile("csrw mtvec, %0" ::"r"(&irq_handler));
 
   // configure PLIC
-  // set priority
-  *(uint32_t *)(0xc000000 + 0x4 * id) = 1;
+  // note diving by wordsize (4) to be able to
+  // use array notation PLIC[index]
+
+  // raise priority
+  PLIC[(0x4 * src) >> 2] = 1;
+
   // set enable bit
-  *(uint32_t *)(0xc000000 + 0x002000 + 0x80 * c + (id >> 5)) |= 1
-                                                                << (id & 0x1F);
+  // interrupt ID N is stored in bit (N mod 32) of word (N/32)
+  PLIC[(0x002000 + 0x80 * ctx + (src >> 5)) >> 2] |= 0b1 << (src & 31);
+
   // lower treshold
-  *(uint32_t *)(0xc000000 + 0x200000 + 0x1000 * c) = 0;
+  PLIC[(0x200000 + 0x1000 * ctx) >> 2] = 0;
 
   // enable external interupts
   asm volatile("csrs mie, %0" ::"r"(1 << 11));
@@ -63,7 +60,7 @@ int main() {
 }
 
 void irq_handler() {
-  print("[IRQ]: ");
+  print("irq: ");
   int mcause;
   asm volatile("csrr %0, mcause" : "=r"(mcause));
 
@@ -87,7 +84,7 @@ void irq_handler() {
   // handle external interupt
   if (code == 11) {
     // claim the interupt
-    size_t id = *(uint32_t *)(0xc000000 + 0x200004 + 0x1000 * ctx());
+    size_t id = *(uint32_t *)(0xc000000 + 0x200004 + 0x1000 * get_context());
     // handle the interupt
     if (id == 0xA) {
       print("UART: ");
