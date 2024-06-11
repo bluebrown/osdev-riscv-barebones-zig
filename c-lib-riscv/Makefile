@@ -4,7 +4,7 @@ CC = zig cc \
 
 outfile = prog.elf
 codemodel = medany
-numcpu = 1
+numcpu = 2
 maxmem = 128
 debug = 0
 

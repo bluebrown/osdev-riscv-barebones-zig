@@ -85,9 +85,12 @@ XCause newMCause() {
 
 // plic
 
-enum PLIC_SRC {
-  PLIC_SRC_UART = 0xA,
-};
+#define PLIC_DECLARE(base)                                                     \
+  ((PlicDriver){.priority = (uint32_t *)(base + 0x0),                          \
+                .enable = (uint32_t *)(base + 0x2000),                         \
+                .threshold = (uint32_t *)(base + 0x200000),                    \
+                .claim = (uint32_t *)(base + 0x200004),                        \
+                .complete = (uint32_t *)(base + 0x200004)})
 
 typedef struct {
   uint32_t *volatile priority;
@@ -108,52 +111,37 @@ PlicDriver newPlicDriver(size_t base) {
   };
 }
 
-#define PLIC_DECLARE(base)                                                     \
-  ((PlicDriver){.priority = (uint32_t *)(base + 0x0),                          \
-                .enable = (uint32_t *)(base + 0x2000),                         \
-                .threshold = (uint32_t *)(base + 0x200000),                    \
-                .claim = (uint32_t *)(base + 0x200004),                        \
-                .complete = (uint32_t *)(base + 0x200004)})
+enum PLIC_SRC {
+  PLIC_SRC_UART = 0xA,
+};
 
 size_t plic_context(size_t mode) {
   int hart;
   asm volatile("csrr %0, mhartid" : "=r"(hart));
-  return hart << 1 | mode;
+  return ((hart << 1 | mode) * 0x1000) >> 2;
 }
-
-size_t plic_priority_index(size_t src) { return (src * 0x4) >> 2; }
 
 void plic_priority_set(PlicDriver *p, size_t src, size_t prio) {
-  p->priority[plic_priority_index(src)] = prio;
-}
-
-size_t plic_enable_index(size_t ctx, size_t src) {
-  return (ctx * 0x80 + (src >> 5)) >> 2;
+  p->priority[src] = prio;
 }
 
 void plic_enable_set(PlicDriver *p, size_t ctx, size_t src) {
-  p->enable[plic_enable_index(ctx, src)] |= 1 << (src & 31);
+  p->enable[(ctx + src) >> 5] |= 1 << (src & 31);
 }
-
-size_t plic_threshold_index(size_t ctx) { return (ctx * 0x1000) >> 2; }
 
 void plic_threshold_set(PlicDriver *p, size_t ctx, size_t th) {
-  p->threshold[plic_threshold_index(ctx)] = th;
+  p->threshold[ctx] = th;
 }
 
-size_t plic_claim_index(size_t ctx) { return (ctx * 0x1000) >> 2; }
-
-size_t plic_claim(PlicDriver *p, size_t ctx) {
-  return p->claim[plic_claim_index(ctx)];
-}
-
-size_t plic_complete_index(size_t ctx) { return (ctx * 0x1000) >> 2; }
+size_t plic_claim(PlicDriver *p, size_t ctx) { return p->claim[ctx]; }
 
 void plic_complete(PlicDriver *p, size_t ctx, size_t src) {
-  p->complete[plic_complete_index(ctx)] = src;
+  p->complete[ctx] = src;
 }
 
 // uart
+
+#define UART_DECLARE(base) ((UartDriver){.ports = (uint8_t *)base})
 
 typedef struct {
   uint8_t *ports;
@@ -162,8 +150,6 @@ typedef struct {
 UartDriver newUartDriver(size_t base) {
   return (UartDriver){.ports = (uint8_t *)base};
 }
-
-#define UART_DECLARE(base) ((UartDriver){.ports = (uint8_t *)base})
 
 void uart_rtx_write(UartDriver *uart, char c) {
   while ((uart->ports[0x5] & 0x20) == 0)
@@ -270,7 +256,12 @@ int main() {
 
   // enable uart interrupts on PLIC
   PlicDriver p = newPlicDriver(0x0c000000);
+
   int ctx = plic_context(0);
+  fprint(&w, "PLIC context: ");
+  fprint(&w, itoa(16, ctx, (char[35]){0}));
+  fprint(&w, "\n");
+
   plic_priority_set(&p, PLIC_SRC_UART, 1);
   plic_enable_set(&p, ctx, PLIC_SRC_UART);
   plic_threshold_set(&p, ctx, 0);

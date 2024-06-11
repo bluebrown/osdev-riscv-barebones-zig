@@ -21,6 +21,7 @@ _start:
 	mul  a0, a0, a1
 	la   sp, __stack_top$
 	add  sp, sp, a0
+  beqz a3, _deadlock
 
 	tail main
 
