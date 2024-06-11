@@ -1,10 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define hotloop                                                                \
-  while (1) {                                                                  \
-  }
-
 // common assembly instructions
 
 #define wfi asm volatile("wfi")
@@ -81,7 +77,7 @@ struct __attribute__((packed)) XCause {
   uint32_t is_interrupt : 1;
 };
 
-struct XCause newMCause() {
+struct XCause MCause() {
   uint32_t cause;
   asm volatile("csrr %0, mcause" : "=r"(cause));
   return *(struct XCause *)&cause;
@@ -97,7 +93,7 @@ struct PlicDriver {
   uint32_t *volatile complete;
 };
 
-struct PlicDriver newPlicDriver(size_t base) {
+struct PlicDriver PlicDriver(size_t base) {
   return (struct PlicDriver){
       .priority = (uint32_t *)(base + 0x0),
       .enable = (uint32_t *)(base + 0x2000),
@@ -142,11 +138,11 @@ struct UartDriver {
   uint8_t *ports;
 };
 
-struct UartDriver newUartDriver(size_t base) {
+struct UartDriver UartDriver(size_t base) {
   return (struct UartDriver){.ports = (uint8_t *)base};
 }
 
-void uart_rtx_write(struct UartDriver *uart, char c) {
+void uart_rtxWrite(struct UartDriver *uart, char c) {
   while ((uart->ports[0x5] & 0x20) == 0)
     ;
   if (c == '\n')
@@ -154,7 +150,7 @@ void uart_rtx_write(struct UartDriver *uart, char c) {
   uart->ports[0x0] = c;
 }
 
-char uart_rtx_read(struct UartDriver *uart) {
+char uart_rtxRead(struct UartDriver *uart) {
   while ((uart->ports[0x5] & 0x1) == 0)
     ;
   char c = uart->ports[0x0];
@@ -163,28 +159,28 @@ char uart_rtx_read(struct UartDriver *uart) {
   return c;
 }
 
-void uart_rtx_flush(struct UartDriver *uart) {
+void uart_rtxFlush(struct UartDriver *uart) {
   while ((uart->ports[0x5] & 0x40) == 0)
     ;
 }
 
-void uart_fifo_init(struct UartDriver *uart) {
+void uart_fifoInit(struct UartDriver *uart) {
   uart->ports[0x2] |= (1 | 3 << 1);
 }
 
-uint8_t uart_fifo_status(struct UartDriver *uart) {
+uint8_t uart_fifoStatus(struct UartDriver *uart) {
   return uart->ports[0x2] >> 6 & 3;
 }
 
-void uart_irq_enable_set(struct UartDriver *uart, uint8_t flags) {
+void uart_irqEnableSet(struct UartDriver *uart, uint8_t flags) {
   uart->ports[0x1] |= (flags & 0xf);
 }
 
-void uart_irq_enable_clear(struct UartDriver *uart, uint8_t flags) {
+void uart_irqEnableClear(struct UartDriver *uart, uint8_t flags) {
   uart->ports[0x1] &= ~(flags & 0xf);
 }
 
-uint8_t uart_irq_is_pending(struct UartDriver *uart) {
+uint8_t uart_irqIsPending(struct UartDriver *uart) {
   return (uart->ports[0x2] & 1) == 0;
 }
 
@@ -234,17 +230,24 @@ char *itoa(size_t base, size_t num, char *buf) {
 // main program
 // ====================================
 
-void irq_handler();
+#define new
+
+#define hotloop                                                                \
+  while (1) {                                                                  \
+  }
+
+void irqHandler();
 
 int main() {
   // load the trap as first thing, to catch any exception.
   // the setup uart in order to print debug messages.
-  csrw(mtvec, &irq_handler);
+  csrw(mtvec, &irqHandler);
 
-  struct UartDriver uart = newUartDriver(0x10000000);
+  struct UartDriver u = new UartDriver(0x10000000);
   struct Writer w =
-      (struct Writer){.impl = &uart, .write = (Write *)uart_rtx_write};
-  uart_fifo_init(&uart);
+      (struct Writer){.impl = &u, .write = (Write *)uart_rtxWrite};
+
+  uart_fifoInit(&u);
 
   // start the real initialization
   fprint(&w, "init\n");
@@ -255,7 +258,7 @@ int main() {
   fprint(&w, "interrupts enabled\n");
 
   // enable uart interrupts on PLIC
-  struct PlicDriver p = newPlicDriver(0x0c000000);
+  struct PlicDriver p = new PlicDriver(0x0c000000);
 
   int ctx = plic_context(0);
   fprint(&w, "PLIC context: ");
@@ -268,23 +271,23 @@ int main() {
   fprint(&w, "PLIC configured for UART\n");
 
   // enable uart interrupts
-  uart_irq_enable_set(&uart, 1);
+  uart_irqEnableSet(&u, 1);
   fprint(&w, "UART interrupts enabled\n");
 
   fprint(&w, "waiting for interrupts\n");
   while (1)
-    uart_rtx_write(&uart, uart_rtx_read(&uart));
+    uart_rtxWrite(&u, uart_rtxRead(&u));
 }
 
-void irq_handler() {
-  struct UartDriver uart = newUartDriver(0x10000000);
+void irqHandler() {
+  struct UartDriver uart = new UartDriver(0x10000000);
   struct Writer w =
-      (struct Writer){.impl = &uart, .write = (Write *)uart_rtx_write};
+      (struct Writer){.impl = &uart, .write = (Write *)uart_rtxWrite};
   char buf[35];
 
   fprint(&w, "irq: ");
 
-  struct XCause cause = newMCause();
+  struct XCause cause = new MCause();
   fprint(&w, itoa(2, cause.is_interrupt, buf));
   fprint(&w, " : code: ");
   fprint(&w, itoa(16, cause.code, buf));
@@ -301,7 +304,7 @@ void irq_handler() {
   fprint(&w, ": ");
 
   if (cause.code == 11) {
-    struct PlicDriver p = newPlicDriver(0x0c000000);
+    struct PlicDriver p = new PlicDriver(0x0c000000);
     int ctx = plic_context(0);
     size_t src = plic_claim(&p, ctx);
     fprint(&w, "PLIC source: ");
