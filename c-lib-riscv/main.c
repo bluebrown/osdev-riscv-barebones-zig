@@ -86,21 +86,22 @@ struct XCause MCause() {
 // plic
 
 struct PlicDriver {
-  uint32_t *volatile priority;
-  uint32_t *volatile enable;
-  uint32_t *volatile threshold;
-  uint32_t *volatile claim;
-  uint32_t *volatile complete;
+  uint32_t *volatile base;
+  size_t priority;
+  size_t enable;
+  size_t threshold;
+  size_t claim;
+  size_t complete;
 };
 
 struct PlicDriver PlicDriver(size_t base) {
   return (struct PlicDriver){
-      .priority = (uint32_t *)(base + 0x0),
-      .enable = (uint32_t *)(base + 0x2000),
-      .threshold = (uint32_t *)(base + 0x200000),
-      .claim = (uint32_t *)(base + 0x200004),
-      .complete = (uint32_t *)(base + 0x200004),
-
+      .base = (uint32_t *)base,
+      .priority = 0x0,
+      .enable = 0x2000 / 0x4,
+      .threshold = 0x200000 / 0x4,
+      .claim = 0x200004 / 0x4,
+      .complete = 0x200004 / 0x4,
   };
 }
 
@@ -108,28 +109,40 @@ enum PlicSource {
   PLIC_SRC_UART = 0xA,
 };
 
-size_t plic_context(size_t mode) {
+// One pagesize per context, aligned at wordsize:
+//
+//   pagesize = 0x1000 (4kb);
+//   wordsize = 0x4    (4bytes, 32bits);
+//   hart     = mhartid;
+//   mode     = 0 (machine mode) or 1 (supervisor mode);
+//   ctx      = hart << 1 | mode;
+//   start    = ctx * pagesize;
+//   index    = start / wordsize;
+//
+size_t plic_wordIndex(size_t mode) {
   int hart;
   asm volatile("csrr %0, mhartid" : "=r"(hart));
-  return ((hart << 1 | mode) * 0x1000) >> 2;
+  return (hart << 1 | mode) << 10;
 }
 
 void plic_priority(struct PlicDriver *p, enum PlicSource src, size_t prio) {
-  p->priority[src] = prio;
+  p->base[p->priority + src] = prio;
 }
 
-void plic_enable(struct PlicDriver *p, size_t ctx, size_t src) {
-  p->enable[(ctx + src) >> 5] |= 1 << (src & 31);
+void plic_enable(struct PlicDriver *p, size_t idx, size_t src) {
+  p->base[p->enable + ((idx + src) >> 5)] |= 1 << (src & 31);
 }
 
-void plic_threshold(struct PlicDriver *p, size_t ctx, size_t th) {
-  p->threshold[ctx] = th;
+void plic_threshold(struct PlicDriver *p, size_t idx, size_t th) {
+  p->base[p->threshold + idx] = th;
 }
 
-size_t plic_claim(struct PlicDriver *p, size_t ctx) { return p->claim[ctx]; }
+size_t plic_claim(struct PlicDriver *p, size_t idx) {
+  return p->base[p->claim + idx];
+}
 
-void plic_complete(struct PlicDriver *p, size_t ctx, size_t src) {
-  p->complete[ctx] = src;
+void plic_complete(struct PlicDriver *p, size_t idx, size_t src) {
+  p->base[p->complete + idx] = src;
 }
 
 // uart
@@ -260,7 +273,7 @@ int main() {
   // enable uart interrupts on PLIC
   struct PlicDriver p = new PlicDriver(0x0c000000);
 
-  int ctx = plic_context(0);
+  int ctx = plic_wordIndex(0);
   fprint(&w, "PLIC context: ");
   fprint(&w, itoa(16, ctx, (char[35]){0}));
   fprint(&w, "\n");
@@ -305,7 +318,7 @@ void irqHandler() {
 
   if (cause.code == 11) {
     struct PlicDriver p = new PlicDriver(0x0c000000);
-    int ctx = plic_context(0);
+    int ctx = plic_wordIndex(0);
     size_t src = plic_claim(&p, ctx);
     fprint(&w, "PLIC source: ");
     fprint(&w, itoa(16, src, buf));
