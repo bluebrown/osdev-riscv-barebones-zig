@@ -1,0 +1,1 @@
+#define BOARD_QEMU_RISCV_VIRT
