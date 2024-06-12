@@ -1,27 +1,50 @@
-CC = zig cc \
-	 --target=riscv32-freestanding-none \
-	 -march=generic_rv32 -mabi=ilp32
+LLVM_VERSION = 16
+OBJCOPY = llvm-objcopy-$(LLVM_VERSION)
+OBJDUMP = llvm-objdump-$(LLVM_VERSION)
+SIZE = llvm-size-$(LLVM_VERSION)
+QEMU = qemu-system-riscv32
+CC = zig cc
 
-outfile = prog.elf
-codemodel = medany
-numcpu = 2
-maxmem = 128
-debug = 0
+TARGET_ARCH += --target=riscv32-freestanding-none
+TARGET_ARCH += -march=generic_rv32 -mabi=ilp32
+TARGET_ARCH += -mcmodel=medany
+TARGET_MACH += $(TARGET_ARCH) # for assembly
 
-ifeq ($(debug), 1)
-	QFLAGS = -s -S
+CFLAGS += -Wall -Werror -Wcast-align -MD -MP
+CFLAGS += -O2 -ffreestanding -fno-pic
+LDFLAGS += -nostdlib -Wl,-T,linker.ld
+ASFLAGS += $(CFLAGS) -Wa,-L
+
+ifdef debug
+CFLAGS += -g
+QFLAGS += -s -S
 endif
 
-run: $(outfile)
-	qemu-system-riscv32 -machine virt \
+cpu = 2
+mem = 128M
+src = $(wildcard *.c)
+obj = $(src:.c=.o)
+
+qemu: crt0 crt0.lst # run in emulator
+	$(SIZE) -A -x $<
+	$(QEMU) -machine virt \
 		-display none -serial stdio \
-		-smp $(numcpu) -m $(maxmem) \
+		-smp $(cpu) -m $(mem) \
 		-bios none -kernel $< $(QFLAGS)
 
-$(outfile): *.ld *.S *.c
-	$(CC) -mcmodel=$(codemodel) $(CFLAGS) \
-		-o $@ -T $^
+crt0: crt0.o $(obj) # use implicit rules
+# %: %.o -> %.o: %.[cS]
 
-clean:
-	rm -f *.i *.o *.bc \
-		a.out *.bin *.pdf *.html *.elf
+clean: # remove generated files
+	$(RM) *.o *.d *.lst *.bin *.elf \
+		*.srec *.out crt0
+
+%.bin: % # strip elf to binary
+	$(OBJCOPY) $< -O binary $@
+
+%.lst: % # debug dissasembly
+	$(OBJDUMP) -Mnumeric,no-aliases -S -dr $< > $<.lst
+
+# track changes in header files
+# requires -MD -MP in CFLAGS
+-include $(obj:.o=.d)
