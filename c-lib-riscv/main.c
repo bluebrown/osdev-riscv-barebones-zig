@@ -4,18 +4,14 @@
 #include "plic.h"
 #include "uart.h"
 
-#define hotloop                                                                \
-  while (1) {                                                                  \
-  }
-
-// trap vec is a 4 byte aligned
-// jump switch in trapvec.S
-extern void trapvec();
+// implemented in trap.S
+extern void trapDirect();
 
 int main() {
   // load the trap first, so any exception during init
   // will be reported
-  csrw(mtvec, (uint32_t)trapvec | 1);
+  // csrw(mtvec, (uint32_t)trapvec | 1);
+  csrw(mtvec, (uint32_t)trapDirect);
 
   // mmio driver instances
   struct UartDriver u = UartDriver(UART_BASE);
@@ -54,6 +50,8 @@ int main() {
     wfi;
 }
 
+void trapExternal();
+
 void trap0() {
   char buf[35];
   struct UartDriver u = {(uint8_t *)UART_BASE};
@@ -67,13 +65,14 @@ void trap0() {
   fprint(&w, itoa(16, cause.code, buf));
   fprint(&w, ": ");
 
-  if (cause.is_interrupt)
+  if (cause.is_interrupt) {
     fprint(&w, irq_names[cause.code]);
-  else
-    fprint(&w, exception_names[cause.code]);
+    trapExternal();
+    return;
+  }
 
+  fprint(&w, exception_names[cause.code]);
   fprint(&w, "\n");
-  hotloop;
 }
 
 void trapExternal() {
@@ -99,9 +98,4 @@ void trapExternal() {
 
   plic_complete(&p, idx, src);
   fprint(&w, "\n");
-
-  // FIXME: the stack and registers should be broken
-  // at this point. they need to be saved at the
-  // beginning of the irq handler and restored before!!
-  mret;
 }

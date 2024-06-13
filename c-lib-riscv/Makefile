@@ -22,8 +22,10 @@ endif
 
 cpu = 2
 mem = 128M
-src = $(wildcard *.c)
-obj = $(src:.c=.o)
+
+csrc = $(wildcard *.c)
+ssrc = $(wildcard *.S)
+obj = $(csrc:.c=.o) $(ssrc:.S=.o)
 
 qemu: crt0 crt0.lst # run in emulator
 	$(SIZE) -A -x $<
@@ -32,7 +34,7 @@ qemu: crt0 crt0.lst # run in emulator
 		-smp $(cpu) -m $(mem) \
 		-bios none -kernel $< $(QFLAGS)
 
-crt0: crt0.o trapvec.o $(obj) # use implicit rules
+crt0: $(obj) # use implicit rules
 # %: %.o -> %.o: %.[cS]
 
 clean: # remove generated files
