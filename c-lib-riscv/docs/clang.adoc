@@ -1,0 +1,177 @@
+= C Programming
+
+== Namespaces
+
+C does not support namespaces in the typcial sense. However, c has the concept
+of namespaces. Every symbol defined falls in a certain category.
+
+. Namespaces
+* `Label` - labels
+* `Tag` - struct, union, enum
+* `Member` - struct, union
+* `Identifier` - unction names, object names, typedef names, enumeration constants
+
+Symbols in one of these namespaces have to be unique, but symbols in different
+namespaces can have the same name.
+
+For member namspaces, the unique contraint only applies to the members of the
+same struct or union.
+== Intrinsics
+
+Depending on the compiler, some functions are implemented as intrinsics. This
+means that the compiler will replace the function call with a direct call to
+the intrinsic function. This is done to improve performance. For example, the
+`memcpy` is often implemented as an intrinsic function.
+
+However, for freestanding programs, this can be problematic. With the `#pragma
+function` directive, it is possible to overwrite the intrinsic function with a
+custom implementation. Without the pragma, the the compiler may not allow or
+use the custom implementation.
+
+.Overwrite instrinsic function
+[source,c]
+----
+#pragma function(memcpy)
+void *memcpy(void *dest, const void *src, size_t n) {
+  unsigned char *d = dest;
+  const unsigned char *s = src;
+  while (n--)
+    *d++ = *s++;
+  return dest;
+}
+----
+
+== Struct Methods
+
+In C, it is not possible to define methods for structs. However, it is possible
+to define functions that take a pointer to a struct as an argument. In many
+langauges methods are just syntactic sugar for functions that take a pointer to
+the struct as an argument.
+
+.Using functions as methods
+[source,c]
+----
+typedef struct {
+  int x;
+  int y;
+} Point;
+
+void Point_print(Point *p) {
+  printf("(%d, %d)\n", p->x, p->y);
+}
+
+Point p = {1, 2};
+Point_print(&p);
+----
+
+The reason modern langauges do not have to pass the instance as an argument is
+because the method has access to the instance through its enclosing scope. So
+the instance is in closure of the method. This is important when passing a
+pointer to the function to other parts of the program. This can be solved by
+using a struct to hold the function pointer and the implementation. As this is
+quite similar to the next section, interfaces, the example will be shown there.
+
+.Passing methods as arguments
+[NOTE]
+====
+this will not work, because oswriter does not implement this signature. See the
+next section for a solution.
+[source,c]
+----
+typedef void *Write(const char *)
+void fprint(Write w, const char *data) { w(data); }
+----
+====
+
+== Interfaces
+
+Interfaces are a way to define behavior without specifying the implementation.
+For example, a piece of code might require a function that takes a string and
+returns an integer. It does not care how the function is implemented, only that
+it has the correct signature.
+
+In C, interfaces can be implemented using function pointers and structs as
+container for the function pointer and the implementation (or closure).
+
+This also solves the closure problem as the interface implementation is an
+extension of the closure pattern, with the difference of having a void pointer
+instead of a concrete type for the implementation.
+
+.Using function pointers for interfaces
+[source,c]
+----
+include::interfaces.c[]
+----
+
+=== Tagged Interfaces
+
+Similar to tagged unions, the interface may be tagged via enum. This can be
+useful when requiring access to the underlying implementation.
+
+This requires to specifiy possible implementation upfront, which reduces
+flexibility. However, not all consumers have to use this field, so it doesnt
+actually reduce flexibility, but adds another option. Some specific types may
+be listed and some specific functions use this information, while other parts
+of the program are not aware of this.
+
+== Tagged Unions
+
+Tagged unions are a way to create a union that can hold different types. The
+tagged union is a union that contains a tag and a union. The tag is used to
+determine which member of the union is currently active. This is useful when
+you need to store different types in a single variable.
+
+.Using tagged unions
+[source,c]
+----
+include::tagged-unions.c[]
+----
+
+.Named fields
+[NOTE]
+====
+If the struct fields are named, they need to be accessed with member notation.
+[source,c]
+----
+... struct { char *token; } bearer; ...
+auth->bearer.token;
+----
+====
+
+== Type Punning
+
+Bits at a memory location can be interpreted in different ways. The way bits
+are interpreted is determined by the variable or pointer type, representing the
+memory within the program.
+
+Sometimes it can be useful to interpret the same memory location in different ways,
+throughout the program, as this could be more efficient or simple to implement.
+This is called type punning.
+
+There are two common ways to do type punning in C, through unions and through
+pointers.
+
+.Using unions for type punning
+[source,c]
+----
+union IntOrFloat {
+  int i;
+  float f;
+};
+
+union IntOrFloat u;
+u.i = 42;
+
+printf("int: %d\n", u.i);
+printf("float: %f\n", u.f);
+----
+
+.Using pointers for type punning
+[source,c]
+----
+int i = 42;
+float f = *(float *)&i;
+
+printf("int: %d\n", i);
+printf("float: %f\n", f);
+----
