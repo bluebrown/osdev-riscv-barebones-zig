@@ -1,5 +1,4 @@
 .attribute arch, "rv32g"
-.option    arch, +c
 
 .section .text
 
