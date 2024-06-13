@@ -32,7 +32,7 @@ qemu: crt0 crt0.lst # run in emulator
 		-smp $(cpu) -m $(mem) \
 		-bios none -kernel $< $(QFLAGS)
 
-crt0: crt0.o $(obj) # use implicit rules
+crt0: crt0.o trapvec.o $(obj) # use implicit rules
 # %: %.o -> %.o: %.[cS]
 
 clean: # remove generated files
