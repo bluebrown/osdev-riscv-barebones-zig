@@ -1,30 +1,43 @@
-ARCH = riscv32-unknown-elf
-OBJCOPY = $(ARCH)-objcopy
-OBJDUMP = $(ARCH)-objdump
-OBJDUMPFLAGS += -Mnumeric,no-aliases -S
-SIZE = $(ARCH)-size
-AR = $(ARCH)-ar
-RANLIB = $(ARCH)-ranlib
+LLVM_VERSION = 16
+AS = llvm-as-$(LLVM_VERSION)
+AR = llvm-ar-$(LLVM_VERSION)
+CC = clang-$(LLVM_VERSION)
+LD = ld.lld-$(LLVM_VERSION)
+NM = llvm-nm-$(LLVM_VERSION)
+OBJCOPY = llvm-objcopy-$(LLVM_VERSION)
+OBJDUMP = llvm-objdump-$(LLVM_VERSION)
+RANLIB = llvm-ranlib-$(LLVM_VERSION)
+READELF = llvm-readelf-$(LLVM_VERSION)
+SIZE = llvm-size-$(LLVM_VERSION)
+STRIP = llvm-strip-$(LLVM_VERSION)
 
-CC = zig cc --target=riscv32-freestanding-none
-TARGET_ARCH += -march=generic_rv32 -mabi=ilp32 -mcmodel=medany
-CFLAGS += -g -Wall -Werror -Wcast-align -MD -MP -O2 -ffreestanding -fno-pic
-ASFLAGS += $(CFLAGS) $(TARGET_ARCH) -Wa,-L
+QEMU = qemu-system-riscv32
+
+TARGET_ARCH += --target=riscv32-freestanding-none
+TARGET_ARCH += -march=generic_rv32 -mabi=ilp32
+TARGET_ARCH += -mcmodel=medany
+TARGET_MACH += $(TARGET_ARCH)
+
+CC = zig cc
+CFLAGS += -Wall -Werror -Wcast-align -MD -MP
+CFLAGS += -O2 -ffreestanding -fno-pic
 LDFLAGS += -nostdlib -Wl,-T,linker.ld
+ASFLAGS += $(CFLAGS) -Wa,-L
+OBJDUMPFLAGS += -Mnumeric,no-aliases -S
 
-# MARCH=rv32ima # for gcc
-# ASFLAGS+=-Wa,-alh=$@.lst,-L # for gcc
+ifdef debug
+CFLAGS += -g
+QFLAGS += -s -S
+endif
 
-#CFLAGS+=-fomit-frame-pointer
-#LDFLAGS+=-Wl,--no-relax
-
-src = $(wildcard *.c)
-obj = $(src:.c=.o)
 cpu = 2
 mem = 128
 
+src = $(wildcard *.c)
+obj = $(src:.c=.o)
+
 qemu: prog.elf prog.elf.lst
-	qemu-system-riscv32 -machine virt \
+	$(QEMU) -machine virt \
 		-display none -serial stdio \
 		-smp $(cpu) -m $(mem) \
 		-bios none -kernel $< $(QFLAGS)
@@ -34,28 +47,12 @@ prog.elf: crt0.o $(obj)
 	$(SIZE) -A -x $@
 
 clean:
-	rm -f *.o *.d *.lst *.bin *.elf *.srec
+	$(RM) *.o *.d *.lst *.bin *.elf *.srec
 
-%.bin : %
-	$(OBJCOPY) $< -O binary $@
+%.bin: %.elf
+	$(OBJCOPY) $< -O binary $(@:.elf=.bin)
 
-%.lst : %
+%.lst: %
 	$(OBJDUMP) $(OBJDUMPFLAGS) -dr $< > $<.lst
-
-% : %.o
-	$(LINK.c) $(TARGET_ARCH) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-	$(SIZE) -x -A $@
-
-%.s: %.c
-	$(COMPILE.c) -S -o $@ $<
-
-%.o: %.c
-	$(COMPILE.c) -o $@ $<
-
-%.o: %.S
-	$(COMPILE.S) -o $@ $<
-
-%.srec: %
-	$(OBJCOPY) $< -O srec $@
 
 -include $(obj:.o=.d)

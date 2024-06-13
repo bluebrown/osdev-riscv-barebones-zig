@@ -1,7 +1,7 @@
 #include "config.h"
+#include "cpu.h"
 #include "lib.h"
 #include "plic.h"
-#include "riscv.h"
 #include "uart.h"
 
 #define hotloop                                                                \
