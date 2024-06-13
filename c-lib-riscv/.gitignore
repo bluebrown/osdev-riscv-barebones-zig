@@ -4,3 +4,6 @@
 *.elf
 *.out
 *.bin
+*.d
+*.lst
+*.srec
