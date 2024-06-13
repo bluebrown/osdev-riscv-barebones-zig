@@ -1,4 +1,4 @@
-#include "lib.h"
+#include "fmt.h"
 
 void fprint(struct Writer *w, const char *s) {
   while (*s)

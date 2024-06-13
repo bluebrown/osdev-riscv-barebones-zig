@@ -1,6 +1,6 @@
 #include "config.h"
 #include "cpu.h"
-#include "lib.h"
+#include "fmt.h"
 #include "plic.h"
 #include "uart.h"
 
