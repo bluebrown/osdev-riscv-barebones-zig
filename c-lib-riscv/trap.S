@@ -32,7 +32,7 @@ trapVector:
 // implemented in c. trap0 should return
 .section .text
 .globl trapDirect
-.align 4
+.align 2
 trapDirect:
   // make room for 30 registers on the stack
   // using addi. 32-2 (x0 and tp (x4))
