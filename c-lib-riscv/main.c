@@ -6,28 +6,29 @@
 
 int main();
 void trap0();
-// implemented in trap.S
-extern void trapDirect();
 
 void start() {
   csrw(satp, 0);
   csrw(pmpaddr0, ~0);
-  csrw(pmpcfg0, 0xf);
+  csrw(pmpcfg0, ~0);
 
   csrw(mepc, (size_t)main);
-  csrc(mstatus, MSTATUS_MPP_M);
-  csrs(mstatus, MSTATUS_MPP_S);
+  csrc(mstatus, XSTATUS_MPP_M);
+  csrs(mstatus, XSTATUS_MPP_S);
 
-  csrs(mstatus, MSTATUS_SIE);
+  csrs(mstatus, XSTATUS_SIE);
   csrs(mideleg, 0xFFFF);
   csrs(medeleg, 0xFFFF);
 
   mret;
 }
 
+// implemented in trap.S
+extern void trapDirect();
+
 int main() {
   csrw(stvec, (size_t)trapDirect);
-  csrs(sie, SIE_SEIE);
+  csrs(sie, XIE_SEIE);
 
   struct UartDriver u = UartDriver(UART_BASE);
   struct Writer *w = &(struct Writer){&u, (Write *)uart_rtxWrite};

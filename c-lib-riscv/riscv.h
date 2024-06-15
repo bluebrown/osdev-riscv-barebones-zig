@@ -21,7 +21,16 @@
 
 // control and status registers
 
-// mstatus register
+// the reigsters are layed out such that higher privleges are supersets of lower
+// privleges, in terms of layout. For a given register, fields for a given
+// privilege level are WIRI (write ignore, read ignore), when accessed from a
+// lower privlege level. Thus only the highest privilige level is defined here
+// as all other prvilige level can use the same data structured and constants.
+// These definition shall be called x<register> where x means it can be used for
+// any privilige level. The definitions are not comprehensive and only include
+// the fields that are used in this project.
+
+// xstatus register
 
 // 31  30 23  22 21  20  19  18   17
 // SD   WPRI TSR TW TVM MXR SUM MPRV
@@ -33,28 +42,64 @@
 //
 // Figure 3.6: Machine-mode status register (mstatus) for RV32.
 
-#define MSTATUS_SIE (1 << 1)
-#define MSTATUS_MIE (1 << 3)
-#define MSTATUS_SPIE (1 << 5)
-#define MSTATUS_MPIE (1 << 7)
-#define MSTATUS_SPP (1 << 8)
-#define MSTATUS_MPP_M (3 << 11)
-#define MSTATUS_MPP_S (1 << 11)
+#define XSTATUS_SIE (1 << 1)
+#define XSTATUS_MIE (1 << 3)
+#define XSTATUS_SPIE (1 << 5)
+#define XSTATUS_MPIE (1 << 7)
+#define XSTATUS_SPP (1 << 8)
+#define XSTATUS_MPP_M (3 << 11)
+#define XSTATUS_MPP_S (1 << 11)
 
-// mie register
+// xie register
 
-#define MIE_MSIE (1 << 3)
-#define MIE_MTIE (1 << 7)
-#define MIE_MEIE (1 << 11)
+// XLEN-1 12   11   10    9    8    7    6    5    4    3    2    1    0
+//      WPRI MEIE WPRI SEIE UEIE MTIE WPRI STIE UTIE MSIE WPRI SSIE USIE
+//   XLEN-12    1    1    1    1    1    1    1    1    1    1    1    1
+//
+// Figure 3.12: Machine interrupt-enable register (mie).
 
-// sie register
-
-#define SIE_SSIE (1 << 1)
-#define SIE_STIE (1 << 5)
-#define SIE_SEIE (1 << 9)
+#define XIE_SSIE (1 << 1)
+#define XIE_MSIE (1 << 3)
+#define XIE_STIE (1 << 5)
+#define XIE_MTIE (1 << 7)
+#define XIE_SEIE (1 << 9)
+#define XIE_MEIE (1 << 11)
 
 // xcause register
 
+// Interrupt Exception   Code Description
+// ----------------------------------------------------
+//         1         0   User software interrupt
+//         1         1   Supervisor software interrupt
+//         1         2   Reserved
+//         1         3   Machine software interrupt
+//         1         4   User timer interrupt
+//         1         5   Supervisor timer interrupt
+//         1         6   Reserved
+//         1         7   Machine timer interrupt
+//         1         8   User external interrupt
+//         1         9   Supervisor external interrupt
+//         1        10   Reserved
+//         1        11   Machine external interrupt
+//         1       ≥12   Reserved
+//         0         0   Instruction address misaligned
+//         0         1   Instruction access fault
+//         0         2   Illegal instruction
+//         0         3   Breakpoint
+//         0         4   Load address misaligned
+//         0         5   Load access fault
+//         0         6   Store/AMO address misaligned
+//         0         7   Store/AMO access fault
+//         0         8   Environment call from U-mode
+//         0         9   Environment call from S-mode
+//         0        10   Reserved
+//         0        11   Environment call from M-mode
+//         0        12   Instruction page fault
+//         0        13   Load page fault
+//         0        14   Reserved
+//         0        15   Store/AMO page fault
+//         0       ≥16   Reserved
+//
 // Table 3.6: Machine cause register (mcause) values after trap.
 struct __attribute__((packed)) XCause {
   uint32_t code : 31;
@@ -199,25 +244,5 @@ static inline size_t plicBits(size_t base, size_t offset, size_t context, size_t
 // 4096 * 15872 = 65011712(0x3e00000) bytes
 #define PLIC_COMPLETE_OFFSET 0x200004
 #define PLIC_COMPLETE_STRIDE 0x1000
-
-// uart
-
-#ifdef BOARD_QEMU_RISCV_VIRT
-#define UART_BASE (0x10000000)
-#define PLIC_SRC_UART (10)
-#endif
-// 8 bit registers
-#define UART_RBR (0x0)
-#define UART_THR (0x0)
-#define UART_DLL (0x0)
-#define UART_IER (0x1)
-#define UART_DLH (0x1)
-#define UART_IIR (0x2)
-#define UART_FCR (0x2)
-#define UART_LCR (0x3)
-#define UART_MCR (0x4)
-#define UART_LSR (0x5)
-#define UART_MSR (0x6)
-#define UART_SR (0x7)
 
 #endif

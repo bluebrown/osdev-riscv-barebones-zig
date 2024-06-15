@@ -1,5 +1,4 @@
 #include "uart.h"
-#include "riscv.h"
 
 struct UartDriver UartDriver(size_t base) {
   return (struct UartDriver){.ports = (uint8_t *)base};
