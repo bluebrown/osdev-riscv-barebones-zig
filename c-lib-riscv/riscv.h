@@ -25,7 +25,7 @@
 
 // 31  30 23  22 21  20  19  18   17
 // SD   WPRI TSR TW TVM MXR SUM MPRV
-// 1       8   1  1   1   1   1    1
+//  1      8   1  1   1   1   1    1
 //
 // 16   15 14   13 12    11 10 9   8    7    6    5    4   3    2   1   0
 // XS[1:0] FS[1:0] MPP[1:0] WPRI SPP MPIE WPRI SPIE UPIE MIE WPRI SIE UIE
@@ -55,8 +55,49 @@
 
 // xcause register
 
+// Table 3.6: Machine cause register (mcause) values after trap.
+struct __attribute__((packed)) XCause {
+  uint32_t code : 31;
+  uint32_t is_interrupt : 1;
+};
+
+static inline struct XCause MCause() {
+  struct XCause cause;
+  asm volatile("csrr %0, mcause" : "=r"(cause));
+  return cause;
+}
+
+static inline struct XCause SCause() {
+  struct XCause cause;
+  asm volatile("csrr %0, scause" : "=r"(cause));
+  return cause;
+}
+
+#define IRQ_USER_SOFTWARE_INTERRUPT (0)
+#define IRQ_SUPERVISOR_SOFTWARE_INTERRUPT (1)
+#define IRQ_MACHINE_SOFTWARE_INTERRUPT (3)
+#define IRQ_USER_TIMER_INTERRUPT (4)
+#define IRQ_SUPERVISOR_TIMER_INTERRUPT (5)
+#define IRQ_MACHINE_TIMER_INTERRUPT (7)
+#define IRQ_USER_EXTERNAL_INTERRUPT (8)
+#define IRQ_SUPERVISOR_EXTERNAL_INTERRUPT (9)
+#define IRQ_MACHINE_EXTERNAL_INTERRUPT (11)
+
+static const char *irq_names[] = {
+    [IRQ_USER_SOFTWARE_INTERRUPT] = "User software interrupt",
+    [IRQ_SUPERVISOR_SOFTWARE_INTERRUPT] = "Supervisor software interrupt",
+    [IRQ_MACHINE_SOFTWARE_INTERRUPT] = "Machine software interrupt",
+    [IRQ_USER_TIMER_INTERRUPT] = "User timer interrupt",
+    [IRQ_SUPERVISOR_TIMER_INTERRUPT] = "Supervisor timer interrupt",
+    [IRQ_MACHINE_TIMER_INTERRUPT] = "Machine timer interrupt",
+    [IRQ_USER_EXTERNAL_INTERRUPT] = "User external interrupt",
+    [IRQ_SUPERVISOR_EXTERNAL_INTERRUPT] = "Supervisor external interrupt",
+    [IRQ_MACHINE_EXTERNAL_INTERRUPT] = "Machine external interrupt",
+};
+
 #define EXC_INSTRUCTION_ACCESS_FAULT (1)
 #define EXC_ILLEGAL_INSTRUCTION (2)
+#define EXC_BREAKPOINT (3)
 #define EXC_LOAD_ACCESS_FAULT (5)
 #define EXC_STORE_AMO_ACCESS_FAULT (7)
 #define EXC_INSTRUCTION_PAGE_FAULT (12)
@@ -66,6 +107,7 @@
 static const char *exception_names[] = {
     [EXC_INSTRUCTION_ACCESS_FAULT] = "Instruction access fault",
     [EXC_ILLEGAL_INSTRUCTION] = "Illegal instruction",
+    [EXC_BREAKPOINT] = "Breakpoint",
     [EXC_LOAD_ACCESS_FAULT] = "Load access fault",
     [EXC_STORE_AMO_ACCESS_FAULT] = "Store/AMO access fault",
     [EXC_INSTRUCTION_PAGE_FAULT] = "Instruction page fault",
@@ -73,72 +115,90 @@ static const char *exception_names[] = {
     [EXC_STORE_AMO_PAGE_FAULT] = "Store/AMO page fault",
 };
 
-#define IRQ_MACHINE_SOFTWARE_INTERRUPT (3)
-#define IRQ_MACHINE_TIMER_INTERRUPT (7)
-#define IRQ_MACHINE_EXTERNAL_INTERRUPT (11)
-#define IRQ_COUNTER_OVERFLOW_INTERRUPT (13)
-
-static const char *irq_names[] = {
-    [IRQ_MACHINE_SOFTWARE_INTERRUPT] = "Machine software interrupt",
-    [IRQ_MACHINE_TIMER_INTERRUPT] = "Machine timer interrupt",
-    [IRQ_MACHINE_EXTERNAL_INTERRUPT] = "Machine external interrupt",
-    [IRQ_COUNTER_OVERFLOW_INTERRUPT] = "Counter overflow interrupt",
-};
-
-struct __attribute__((packed)) MCause {
-  uint32_t code : 31;
-  uint32_t is_interrupt : 1;
-};
-
-static inline struct MCause MCause() {
-  struct MCause cause;
-  asm volatile("csrr %0, mcause" : "=r"(cause));
-  return cause;
-}
-
 // MMIO
 
 // plic
 
-#ifdef BOARD_QEMU_RISCV_VIRT
-#define PLIC_BASE (0x0c000000)
-#endif
-#define PLIC_PRIORITY_OFFSET 0x0000
-#define PLIC_PENDING_OFFSET 0x1000
-#define PLIC_PENDING_STRIDE 0x80
-#define PLIC_ENABLE_OFFSET 0x2000
-#define PLIC_ENABLE_STRIDE 0x80
-#define PLIC_THRESHOLD_OFFSET 0x200000
-#define PLIC_THRESHOLD_STRIDE 0x1000
-#define PLIC_CLAIM_OFFSET 0x200004
-#define PLIC_CLAIM_STRIDE 0x1000
-#define PLIC_COMPLETE_OFFSET 0x200004
-#define PLIC_COMPLETE_STRIDE 0x1000
+// these are defined in the ISA specification
+#define PLIC_NUMSOURCE (1024)
+#define PLIC_ALIGNMENT  (32)
+#define PLIC_WORDSIZE (PLIC_ALIGNMENT / 8)
 
+// a WARL registers uses a full word for each value so the max number of
+// possible sources must be multiplied by the word length
+#define PLIC_WARL_STRIDE (PLIC_NUMSOURCE * PLIC_WORDSIZE) // 4KB(0x1000)
 
-// dynamic macros are smelling bad lets do static inline functions
+// as pending/interupt bits are indvidual bits, the max number of sources must
+// be divided by the alignemnt to get the number of words needed. As each word
+// is n bytes the result must be multiplied by the word size to get the number
+// of bytes needed
+#define PLIC_BITS_STRIDE (PLIC_NUMSOURCE / PLIC_ALIGNMENT * PLIC_WORDSIZE) // 128B(0x80)
 
-// #define PLIC_CONTEXT(hart, mode) ((hart << 1) | mode)
 static inline size_t plicContext(size_t hart, size_t mode) {
   return (hart << 1) | mode;
 }
 
-// #define PLIC_ACCESS_ARRAY(offset, src) (PLIC_BASE + PLIC_##offset##_OFFSET + src * 4)
+// plic array access the plic as if it were a word size aligned array.
+// Therefore, the provided source is multiplied by the word size to get the
+// the offset from the base address
 static inline size_t plicArray(size_t base, size_t offset, size_t src) {
-  return base + offset + src * 4;
+  return base + offset + src * PLIC_WORDSIZE;
 }
 
-// #define PLIC_ACCESS_WARL(offset, context)                                     \
-//   (PLIC_BASE + PLIC_##offset##_OFFSET + context * PLIC_##offset##_STRIDE)
+// the warl access only gives the block start based on the context. This is
+// because PLIC only uses the block start for each context to store one of
+// treshold, claim or complete registers
 static inline size_t plicWarl(size_t base, size_t offset, size_t context) {
-  return base + offset + context * 0x1000;
+  return base + offset + context * PLIC_WARL_STRIDE;
 }
 
-// #define PLIC_ACCESS_BITS(offset, context, src)                                 \
-//   (PLIC_BASE + PLIC_##offset##_OFFSET + context * PLIC_##offset##_STRIDE + src / 32)
+// deviding the source by the alignment gives the word offset, the remainder
+// gives the bit offset in the word and the base is added to get the address
+// of the bit:
+//
+//      id = 31 -> word = 31 / 32 = 0
+//      id = 32 -> word = 32 / 32 = 1
+//
+// Likewise, the bit, for a given source, within that word, must be determined
+// by the remainder of the division:
+//
+//      id = 31 -> bit = 31 % 32 = 31
+//      id = 32 -> bit = 32 % 32 = 0
+//
 static inline size_t plicBits(size_t base, size_t offset, size_t context, size_t src) {
-  return base + offset + context * 0x80 + src / 32;
+  return base + offset + context * PLIC_BITS_STRIDE + src / PLIC_ALIGNMENT;
 }
+
+#ifdef BOARD_QEMU_RISCV_VIRT
+#define PLIC_BASE (0x0c000000)
+#endif
+
+// stride here is fixed as showed on the ISA spec. above calculation produces
+// the same result but is less clear to the reader. Therefore plain values are
+// kept here.
+
+// 1024 * 4 = 4096(0x1000) bytes
+#define PLIC_PRIORITY_OFFSET 0x0000
+
+// 1024 / 8 = 128(0x80) bytes
+#define PLIC_PENDING_OFFSET 0x1000
+#define PLIC_PENDING_STRIDE 0x80
+
+// 1024 / 8 = 128(0x80) bytes
+#define PLIC_ENABLE_OFFSET 0x2000
+#define PLIC_ENABLE_STRIDE 0x80
+
+// 4096 * 15872 = 65011712(0x3e00000) bytes
+#define PLIC_THRESHOLD_OFFSET 0x200000
+#define PLIC_THRESHOLD_STRIDE 0x1000
+
+// 4096 * 15872 = 65011712(0x3e00000) bytes
+#define PLIC_CLAIM_OFFSET 0x200004
+#define PLIC_CLAIM_STRIDE 0x1000
+
+// 4096 * 15872 = 65011712(0x3e00000) bytes
+#define PLIC_COMPLETE_OFFSET 0x200004
+#define PLIC_COMPLETE_STRIDE 0x1000
 
 // uart
 
@@ -159,77 +219,5 @@ static inline size_t plicBits(size_t base, size_t offset, size_t context, size_t
 #define UART_LSR (0x5)
 #define UART_MSR (0x6)
 #define UART_SR (0x7)
-
-
-// scause
-// XLEN-1 XLEN-2 0
-// Interrupt Exception Code (WLRL)
-// 1 XLEN-1
-// Figure 4.9: Supervisor Cause register scause.
-// Interrupt Exception Code Description
-// 1 0 User software interrupt
-// 1 1 Supervisor software interrupt
-// 1 2–3 Reserved
-// 1 4 User timer interrupt
-// 1 5 Supervisor timer interrupt
-// 1 6–7 Reserved
-// 1 8 User external interrupt
-// 1 9 Supervisor external interrupt
-// 1 ≥10 Reserved
-// 0 0 Instruction address misaligned
-// 0 1 Instruction access fault
-// 0 2 Illegal instruction
-// 0 3 Breakpoint
-// 0 4 Reserved
-// 0 5 Load access fault
-// 0 6 AMO address misaligned
-// 0 7 Store/AMO access fault
-// 0 8 Environment call
-// 0 9–11 Reserved
-// 0 12 Instruction page fault
-// 0 13 Load page fault
-// 0 14 Reserved
-// 0 15 Store/AMO page fault
-// 0 ≥16 Reserved
-struct __attribute__((packed)) SCause {
-  uint32_t code : 31;
-  uint32_t is_interrupt : 1;
-};
-
-static inline struct SCause SCause() {
-  struct SCause cause;
-  asm volatile("csrr %0, scause" : "=r"(cause));
-  return cause;
-}
-
-#define SIRQ_USER_SOFTWARE_INTERRUPT (0)
-#define SIRQ_SUPERVISOR_SOFTWARE_INTERRUPT (1)
-#define SIRQ_USER_TIMER_INTERRUPT (4)
-#define SIRQ_SUPERVISOR_TIMER_INTERRUPT (5)
-#define SIRQ_USER_EXTERNAL_INTERRUPT (8)
-#define SIRQ_SUPERVISOR_EXTERNAL_INTERRUPT (9)
-
-static const char *sirq_names[] = {
-    [SIRQ_USER_SOFTWARE_INTERRUPT] = "User software interrupt",
-    [SIRQ_SUPERVISOR_SOFTWARE_INTERRUPT] = "Supervisor software interrupt",
-    [SIRQ_USER_TIMER_INTERRUPT] = "User timer interrupt",
-    [SIRQ_SUPERVISOR_TIMER_INTERRUPT] = "Supervisor timer interrupt",
-    [SIRQ_USER_EXTERNAL_INTERRUPT] = "User external interrupt",
-    [SIRQ_SUPERVISOR_EXTERNAL_INTERRUPT] = "Supervisor external interrupt",
-};
-
-#define SEXC_INSTRUCTION_ACCESS_FAULT (1)
-#define SEXC_ILLEGAL_INSTRUCTION (2)
-#define SEXC_BREAKPOINT (3)
-#define SEXC_LOAD_ACCESS (5)
-#define SEXC_AMO_ADDRESS_MISALIGNED (6)
-
-static const char *sexception_names[] = {
-    [SEXC_INSTRUCTION_ACCESS_FAULT] = "Instruction access fault",
-    [SEXC_ILLEGAL_INSTRUCTION] = "Illegal instruction",
-    [SEXC_BREAKPOINT] = "Breakpoint",
-    [SEXC_LOAD_ACCESS] = "Load access fault",
-    [SEXC_AMO_ADDRESS_MISALIGNED] = "AMO address misaligned",
-};
 
 #endif

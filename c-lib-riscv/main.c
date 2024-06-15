@@ -41,6 +41,9 @@ int main() {
   logln("interupts enabled");
 
   logln("done, waiting for interupts");
+
+  // asm volatile("ebreak");
+
   while (1)
     wfi;
 }
@@ -51,16 +54,16 @@ void trap0() {
 
   trace("IRQ", "trap0");
 
-  struct SCause cause = SCause();
+  struct XCause cause = SCause();
 
   tracex("kind", cause.is_interrupt);
   tracex("code", cause.code);
 
   if (cause.is_interrupt) {
-    trace("name", sirq_names[cause.code]);
+    trace("name", irq_names[cause.code]);
     trapExternal();
     return;
   }
 
-  traceln("name", sexception_names[cause.code]);
+  traceln("name", exception_names[cause.code]);
 }
