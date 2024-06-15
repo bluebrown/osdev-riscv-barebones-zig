@@ -110,4 +110,4 @@ trapDirect:
   addi sp, sp, 120
 
   // return from trap
-  mret
+  sret

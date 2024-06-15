@@ -22,7 +22,7 @@ _start:
 	add  sp, sp, a0
   beqz a3, _deadlock
 
-	tail main
+	tail start
 
 	.cfi_endproc
 

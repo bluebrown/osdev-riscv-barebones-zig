@@ -13,9 +13,11 @@ void fprint(struct Writer *w, const char *s) {
     w->write(w->impl, *s++);
 }
 
-struct StandardOut {};
+struct SomeFile {
+  FILE *f;
+};
 
-void StandardOut_write(struct StandardOut *w, char c) { fputc(c, stdout); }
+void SomeFile_write(struct SomeFile *w, char c) { fputc(c, w->f); }
 
 struct Buffer {
   char *data;
@@ -30,8 +32,8 @@ void Buffer_write(struct Buffer *b, char c) {
 
 int main() {
   struct Writer stdw = (struct Writer){
-      .impl = &(struct StandardOut){},
-      .write = (Write *)StandardOut_write,
+      .impl = &(struct SomeFile){stdout},
+      .write = (Write *)SomeFile_write,
   };
 
   fprintf(stdout, "stdw tag: %d\n", stdw.type);

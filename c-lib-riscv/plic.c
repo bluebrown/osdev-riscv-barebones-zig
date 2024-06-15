@@ -1,28 +1,59 @@
-#include "plic.h"
+#include "config.h"
+#include "fmt.h"
+#include "riscv.h"
+#include "uart.h"
 
-struct PlicDriver PlicDriver(size_t base) {
-  return (struct PlicDriver){
-      .base = (uint32_t *)base,
-  };
+void plicInit(struct Writer *w) {
+  log("PLIC: ");
+
+  size_t uart_src = 10;
+
+  int hart;
+  asm volatile("mv %0, tp" : "=r"(hart));
+
+  size_t context = plicContext(hart, 1);
+  tracex("context", context);
+
+  size_t addr = 0;
+
+  addr = plicArray(PLIC_BASE, PLIC_PRIORITY_OFFSET, uart_src);
+  *(uint32_t *)addr = 1;
+  tracex("priority", addr);
+
+  addr = plicBits(PLIC_BASE, PLIC_ENABLE_OFFSET, context, uart_src);
+  *(uint32_t *)addr = 1 << (uart_src % 32);
+  tracex("enable", addr);
+
+  addr = plicWarl(PLIC_BASE, PLIC_THRESHOLD_OFFSET, context);
+  *(uint32_t *)addr = 0;
+  tracex("threshold", addr);
+
+  addr = plicWarl(PLIC_BASE, PLIC_CLAIM_OFFSET, context);
+  tracex("claim", addr);
+
+  addr = plicWarl(PLIC_BASE, PLIC_COMPLETE_OFFSET, context);
+  tracexln("complete", addr);
 }
 
-void plic_priority(struct PlicDriver *p, uint32_t src, size_t prio) {
-  p->base[PLIC_PRIORITY + src] = prio;
-}
+void trapExternal() {
+  struct UartDriver u = {(uint8_t *)UART_BASE};
+  struct Writer *w = &(struct Writer){&u, (Write *)uart_rtxWrite};
 
-void plic_enable(struct PlicDriver *p, size_t idx, size_t src) {
-  // assume 32 bit word size
-  p->base[PLIC_ENABLE + ((idx + src) >> 5)] |= 1 << (src & 31);
-}
+  int hart;
+  asm volatile("mv %0, tp" : "=r"(hart));
 
-void plic_threshold(struct PlicDriver *p, size_t idx, size_t th) {
-  p->base[PLIC_THRESHOLD + idx] = th;
-}
+  size_t context = plicContext(hart, 1);
+  size_t src = *(uint32_t *)plicWarl(PLIC_BASE, PLIC_CLAIM_OFFSET, context);
 
-size_t plic_claim(struct PlicDriver *p, size_t idx) {
-  return p->base[PLIC_CLAIM + idx];
-}
+  tracex("PLIC source", src);
 
-void plic_complete(struct PlicDriver *p, size_t idx, size_t src) {
-  p->base[PLIC_COMPLETE + idx] = src;
+  if (src == PLIC_SRC_UART) {
+    // TODO: check uart IIR
+    log("\nUART received data: ");
+    uart_rtxWrite(&u, uart_rtxRead(&u));
+  }
+
+  *(uint32_t *)plicWarl(PLIC_BASE, PLIC_COMPLETE_OFFSET, context) = src;
+
+  logln("\n");
 }

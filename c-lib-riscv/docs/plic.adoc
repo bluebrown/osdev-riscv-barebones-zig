@@ -1,0 +1,67 @@
+PLIC_BASE 0x0c000000
+
+PLIC_ENABLE_OFFSET 0x2000
+PLIC_ENABLE_STRIDE 0x80
+
+PLIC_THRESHOLD_OFFSET 0x200000
+PLIC_THRESHOLD_STRIDE 0x1000
+
+PLIC_CLAIM_OFFSET 0x200004
+PLIC_CLAIM_STRIDE 0x1000
+
+PLIC_COMPLETE_OFFSET 0x200004
+PLIC_COMPLETE_STRIDE 0x1000
+
+PLIC_CONTEXT(hart, mode) ((hart << 1) | mode)
+
+****
+* The registers start at base * register offset.
+
+* Each register has an extra offset context * stride.
+  The stride depends on the registers being used.
+
+* The priorty is stored at at stride * source
+
+* The pending bit for interrupt ID N is stored in
+  bit (N mod 32) of word (N/32)
+
+* The enables registers are accessed as a contiguous
+  array of 32-bit registers, packed the same way as
+  the pending bits.
+
+* The threshold register is a WARL field.
+
+* stride is typically 0x1000, 32 * 32 * 4 bytes, for
+  WARL-like registers. Since each register is 1 value.
+  For bitmap-like registers, the stride is 0x80, 32 * 4
+  bytes, since each register is 32 values.
+  This means each register can hold 1024 values, WARL or
+  single bit.
+
+* the context is hart shifted by 1 anded with the context.
+  this gives sequential context mumbers for each hart.
+  ex:
+
+      0 << 1 | 0 = 0
+      0 << 1 | 1 = 1
+      1 << 1 | 0 = 2
+      1 << 1 | 1 = 3
+****
+
+[source,c]
+----
+size_t uart_src = 10;
+
+int hart;
+asm volatile("mv %0, tp" : "=r"(hart));
+
+size_t context = PLIC_CONTEXT(hart, 0);
+
+*(uint32_t *)(PLIC_BASE + uart_src * 0x4) = 1;
+
+*(uint32_t *)(PLIC_BASE + PLIC_ENABLE_OFFSET + PLIC_ENABLE_STRIDE * context +
+              uart_src / 32) = 1 << (uart_src % 32);
+
+*(uint32_t *)(PLIC_BASE + PLIC_THRESHOLD_OFFSET +
+              PLIC_THRESHOLD_STRIDE * context) = 0;
+----
