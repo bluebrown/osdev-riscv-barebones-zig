@@ -17,17 +17,17 @@ struct SomeFile {
   FILE *f;
 };
 
-void SomeFile_write(struct SomeFile *w, char c) { fputc(c, w->f); }
+void SomeFile_write(struct SomeFile *w, const char c) { fputc(c, w->f); }
 
 struct Buffer {
-  char *data;
+  char *buf;
   size_t cap;
-  size_t pos;
+  size_t off;
 };
 
-void Buffer_write(struct Buffer *b, char c) {
-  if (b->pos < b->cap)
-    b->data[b->pos++] = c;
+void Buffer_write(struct Buffer *b, const char c) {
+  if (b->off < b->cap)
+    b->buf[b->off++] = c;
 }
 
 int main() {
@@ -40,12 +40,12 @@ int main() {
 
   struct Writer bufw = (struct Writer){
       .type = WRITER_BUFFER,
-      .impl = &(struct Buffer){.data = (char[1024]){}, .cap = 1024},
+      .impl = &(struct Buffer){.buf = (char[1024]){}, .cap = 1024},
       .write = (Write *)Buffer_write,
   };
 
   fprint(&stdw, "console meat\n");
   fprint(&bufw, "buffered beefalo\n");
   if (bufw.type == WRITER_BUFFER)
-    fprint(&stdw, ((struct Buffer *)bufw.impl)->data);
+    fprint(&stdw, ((struct Buffer *)bufw.impl)->buf);
 }

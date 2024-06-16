@@ -30,6 +30,14 @@
 // any privilige level. The definitions are not comprehensive and only include
 // the fields that are used in this project.
 
+// .CSR field behavior
+// ****
+// * Reserved Writes Ignored, Reads Ignore Values (WIRI)
+// * Reserved Writes Preserve Values, Reads Ignore Values (WPRI)
+// * Write/Read Only Legal Values (WLRL)
+// * Write Any Values, Reads Legal Values (WARL)
+// ****
+
 // xstatus register
 
 // 31  30 23  22 21  20  19  18   17
@@ -41,6 +49,8 @@
 //       2       2        2    2   1    1    1    1    1   1    1   1   1
 //
 // Figure 3.6: Machine-mode status register (mstatus) for RV32.
+
+#define XSTATUS_MPP_MASK (3 << 11)
 
 #define XSTATUS_SIE (1 << 1)
 #define XSTATUS_MIE (1 << 3)
@@ -159,6 +169,206 @@ static const char *exception_names[] = {
     [EXC_LOAD_PAGE_FAULT] = "Load page fault",
     [EXC_STORE_AMO_PAGE_FAULT] = "Store/AMO page fault",
 };
+
+// xip
+
+// XLEN-1 12   11   10    9    8    7    6    5    4    3    2   1     0
+//      WIRI MEIP WIRI SEIP UEIP MTIP WIRI STIP UTIP MSIP WIRI SSIP USIP
+//   XLEN-12    1    1    1    1    1    1    1    1    1    1    1    1
+//
+// Figure 3.11: Machine interrupt-pending register (mip).
+struct __attribute__((packed)) XIP {
+  uint32_t usip : 1;
+  uint32_t ssip : 1;
+  uint32_t wsip : 1;
+  uint32_t msip : 1;
+  uint32_t utip : 1;
+  uint32_t stip : 1;
+  uint32_t wtip : 1;
+  uint32_t mtip : 1;
+  uint32_t ueip : 1;
+  uint32_t seip : 1;
+  uint32_t weip : 1;
+  uint32_t meip : 1;
+  uint32_t wiri : 20;
+};
+
+static inline struct XIP MIP() {
+  struct XIP ip;
+  asm volatile("csrr %0, mip" : "=r"(ip));
+  return ip;
+}
+
+static inline struct XIP SIP() {
+  struct XIP ip;
+  asm volatile("csrr %0, sip" : "=r"(ip));
+  return ip;
+}
+
+// satp
+
+// XLEN-bit read/write register
+
+//          31 30       22 21       0
+// MODE (WARL) ASID (WARL) PPN (WARL)
+//           1          9          22
+//
+// Figure 4.11: RV32 Supervisor address translation and protection register satp
+
+// * PPN (Physical Page Number): Physical page number of the root page table.
+// * ASID (Address Space Identifier): Address-space identifier.
+// * MODE: Determines the current address-translation scheme.
+
+#define SATP_PPN_MASK (0x3fffff)
+#define SATP_ASID_MASK (0x3ff << 22)
+#define SATP_MODE_MASK (0xf << 31)
+
+// [NOTE]
+// When mode is `Bare`, the remaining fields have no effect.
+
+// .MODE field
+// RV32
+// ----
+// Value  Name  Description
+//     0  Bare  No translation or protection.
+//     1  Sv32  Page-based 32-bit virtual addressing.
+
+#define SATP_MODE_SV32 (1 << 31)
+
+// RV64
+// ----
+// Value  Name  Description
+//     0  Bare  No translation or protection.
+//   1–7   —    Reserved
+//     8  Sv39  Page-based 39-bit virtual addressing.
+//     9  Sv48  Page-based 48-bit virtual addressing.
+//    10  Sv57  Reserved for page-based 57-bit virtual addressing.
+//    11  Sv64  Reserved for page-based 64-bit virtual addressing.
+// 12–15   —    Reserved
+//
+// Table 4.3: Encoding of satp MODE field
+
+// address translation
+
+// The 20-bit VPN is translated into a 22-bit physical page number (PPN), while
+// the 12- bit page offset is untranslated. The resulting supervisor-level
+// physical addresses are then checked using any physical memory protection
+// structures (Sections 3.6), before being directly converted to machine-level
+// physical addresses.
+
+// 31  22 21  12 11        0
+// VPN[1] VPN[0] page-offset
+//     10     10          12
+//
+// Figure 4.13: Sv32 virtual address
+struct __attribute__((packed)) Sv32VirtualAddress {
+  uint32_t page_offset : 12;
+  uint32_t vpn0 : 10;
+  uint32_t vpn1 : 10;
+};
+
+// 3   22 21  12 11        0
+// PPN[1] PPN[0] page-offset
+//     12     10          12
+//
+// Figure 4.14: Sv32 physical address.
+struct __attribute__((packed)) Sv32PhysicalAddress {
+  uint32_t page_offset : 12;
+  uint32_t ppn0 : 10;
+  uint32_t ppn1 : 10;
+};
+
+//  31 20 19  10 9 8 7 6 5 4 3 2 1 0
+// PPN[1] PPN[0] RSW D A G U X W R V
+//    12     10    2 1 1 1 1 1 1 1 1
+//
+// Figure 4.15: Sv32 page table entr
+//
+// X W R Meaning
+// 0 0 0 Pointer to next level of page table.
+// 0 0 1 Read-only page.
+// 0 1 0 Reserved for future use.
+// 0 1 1 Read-write page.
+// 1 0 0 Execute-only page.
+// 1 0 1 Read-execute page.
+// 1 1 0 Reserved for future use.
+// 1 1 1 Read-write-execute page
+//
+// Table 4.4: Encoding of PTE R/W/X fields.
+//
+// Sv32 page tables consist of 210 page-table entries (PTEs), each of four
+// bytes. A page table is exactly the size of a page and must always be aligned
+// to a page boundary. The physical page number of the root page table is stored
+// in the satp register.
+struct __attribute__((packed)) Sv32PageTableEntry {
+  uint32_t v : 1;
+  uint32_t r : 1;
+  uint32_t w : 1;
+  uint32_t x : 1;
+  uint32_t u : 1;
+  uint32_t g : 1;
+  uint32_t a : 1;
+  uint32_t d : 1;
+  uint32_t rsw : 2;
+  uint32_t ppn0 : 10;
+  uint32_t ppn1 : 10;
+};
+
+
+//pmp
+
+//        7  6  5  4      3         2         1         0
+// L (WARL)  WIRI  A (WARL)  X (WARL)  W (WARL)  R (WARL)
+//        1     2         2         1         1         1
+//
+// Figure 3.27: PMP configuration register format
+struct __attribute__((packed)) PmpConfig {
+  // read
+  // deny, if clear
+  uint8_t r : 1;
+  // write
+  // deny, if clearn
+  uint8_t w : 1;
+  // execute
+  // deny, if clear
+  uint8_t x : 1;
+  // address matching mode
+  // entry is disabled, if clear
+  enum __attribute__((packed)) {
+    PMP_CONFIG_A_OFF = 0,
+    PMP_CONFIG_A_TOR = 1,
+    PMP_CONFIG_A_NA4 = 2,
+    PMP_CONFIG_A_NAPOT = 3,
+  } a : 2;
+  // reserved
+  uint8_t WIRI: 2;
+  // locking
+  // entry is locked, if set
+  uint8_t l : 1;
+};
+
+// read write execute
+#define PMPCFG_R (1 << 0)
+#define PMPCFG_W (1 << 1)
+#define PMPCFG_X (1 << 2)
+// address matching mode
+// entry is disabled, if clear
+#define PMPCFG_A_MASK (3 << 3)
+// locking
+// entry is locked, if set
+#define PMPCFG_L (1 << 7)
+
+// A Name Description
+// 0 OFF Null region (disabled)
+// 1 TOR Top of range
+// 2 NA4 Naturally aligned four-byte region
+// 3 NAPOT Naturally aligned power-of-two region, ≥8 bytes
+//
+// Table 3.8: Encoding of A field in PMP configuration registersr
+#define PMPCFG_A_OFF (0 << 3)
+#define PMPCFG_A_TOR (1 << 3)
+#define PMPCFG_A_NA4 (2 << 3)
+#define PMPCFG_A_NAPOT (3 << 3)
 
 // MMIO
 
