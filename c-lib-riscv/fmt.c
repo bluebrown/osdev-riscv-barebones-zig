@@ -1,10 +1,5 @@
 #include "fmt.h"
 
-void fprint(struct Writer *w, const char *s) {
-  while (*s)
-    w->write(w->impl, *s++);
-}
-
 char *itoa(size_t base, size_t num, char *buf) {
   char *p = buf + 35;
 

@@ -1,13 +1,24 @@
 #include "config.h"
 #include "fmt.h"
-#include "plic.h"
 #include "riscv.h"
-#include "uart.h"
 #include <stdint.h>
 
+// implemented in trap.S
+extern void trap_direct();
+
 int main();
+void trap_zero();
+void trap_external();
+void plic_init();
+void uart_init();
+
+#define print(s)                                                               \
+  for (const char *p = s; *p; p++)                                             \
+    uart_write(*p);
 
 void start() {
+  print("init: machine\n");
+
   // clear all config in satp. this sets the mode to bare, which disables
   // protection and translation
   csrc(satp, 0);
@@ -41,49 +52,74 @@ void start() {
   mret;
 }
 
-// implemented in trap.S
-extern void trapDirect();
-
 int main() {
-  csrw(stvec, (size_t)trapDirect);
+  print("init: supervisor\n");
+
+  csrw(stvec, (size_t)trap_direct);
   csrs(sie, XIE_SEIE);
   csrs(sstatus, XSTATUS_SIE);
 
-  struct UartDriver u = UartDriver(UART_BASE);
-  struct Writer *w = &(struct Writer){&u, (Write *)uart_rtxWrite};
+  plic_init();
+  uart_init();
 
-  uart_fifoInit(&u);
-
-  logln("supervisor init");
-
-  plicInit(w);
-  uart_irqEnableSet(&u, 1);
-  logln("interupts enabled");
-
-  logln("done, waiting for interupts");
-
-  // asm volatile("ebreak");
-
+  print("done: waiting for interrupts\n");
   while (1)
     wfi;
 }
 
-void trap0() {
-  struct UartDriver u = {(uint8_t *)UART_BASE};
-  struct Writer *w = &(struct Writer){&u, (Write *)uart_rtxWrite};
-
-  trace("IRQ", "trap0");
+void trap_zero() {
+  print("trap: ");
 
   struct XCause cause = SCause();
-
-  tracex("kind", cause.is_interrupt);
-  tracex("code", cause.code);
-
   if (cause.is_interrupt) {
-    trace("name", irq_names[cause.code]);
-    trapExternal();
+    print("interrupt: ");
+    print(irq_names[cause.code]);
+    print("\n");
+
+    trap_external();
     return;
   }
 
-  traceln("name", exception_names[cause.code]);
+  print("exception: ");
+  print(exception_names[cause.code]);
+  print("\n");
+
+  while (1)
+    ;
+}
+
+void trap_external() {
+  size_t ctx = plic_context(hartid(), PLIC_MODE_S);
+  size_t src = *(uint32_t *)plic_warl(PLIC_BASE, PLIC_CLAIM_OFFSET, ctx);
+
+  if (src == PLIC_SRC_UART) {
+    // TODO: check uart IIR
+    print("uart: ");
+    uart_write(uart_read());
+    print("\n");
+  }
+
+  // for now, simply compelte any interupt
+  *(uint32_t *)plic_warl(PLIC_BASE, PLIC_COMPLETE_OFFSET, ctx) = src;
+}
+
+void plic_init() {
+  size_t ctx = plic_context(hartid(), 1);
+
+  *(uint32_t *)plic_array(PLIC_BASE, PLIC_PRIORITY_OFFSET, PLIC_SRC_UART) = 1;
+
+  *(uint32_t *)plic_bits(PLIC_BASE, PLIC_ENABLE_OFFSET, ctx, PLIC_SRC_UART) |=
+      1 << (PLIC_SRC_UART % 32);
+
+  *(uint32_t *)plic_warl(PLIC_BASE, PLIC_THRESHOLD_OFFSET, ctx) = 0;
+}
+
+void uart_init() {
+  *(volatile uint8_t *)(UART_BASE + UART_FCR) |=
+      UART_FCR_ENABLE_FIFO | UART_FCR_CLEAR_RX | UART_FCR_CLEAR_TX |
+      UART_FCR_TRIGGER_8b;
+
+  *(volatile uint8_t *)(UART_BASE + UART_LCR) |= UART_LCR_WORD_LEN_8b;
+
+  *(volatile uint8_t *)(UART_BASE + UART_IER) |= UART_IER_RX_AVAIL;
 }

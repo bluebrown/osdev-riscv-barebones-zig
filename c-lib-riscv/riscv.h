@@ -12,6 +12,13 @@
   asm volatile("mret");                                                        \
   __builtin_unreachable()
 
+
+static inline size_t hartid() {
+  int _hid;
+  asm volatile("mv %0, tp" : "=r"(_hid));
+  return _hid;
+}
+
 // csr instructions
 
 #define csrr(rd, csr) asm volatile("csrr %0, " #csr : "=r"(rd))
@@ -378,6 +385,8 @@ struct __attribute__((packed)) PmpConfig {
 #define PLIC_NUMSOURCE (1024)
 #define PLIC_ALIGNMENT  (32)
 #define PLIC_WORDSIZE (PLIC_ALIGNMENT / 8)
+#define PLIC_MODE_M (0)
+#define PLIC_MODE_S (1)
 
 // a WARL registers uses a full word for each value so the max number of
 // possible sources must be multiplied by the word length
@@ -389,21 +398,21 @@ struct __attribute__((packed)) PmpConfig {
 // of bytes needed
 #define PLIC_BITS_STRIDE (PLIC_NUMSOURCE / PLIC_ALIGNMENT * PLIC_WORDSIZE) // 128B(0x80)
 
-static inline size_t plicContext(size_t hart, size_t mode) {
+static inline size_t plic_context(size_t hart, size_t mode) {
   return (hart << 1) | mode;
 }
 
 // plic array access the plic as if it were a word size aligned array.
 // Therefore, the provided source is multiplied by the word size to get the
 // the offset from the base address
-static inline size_t plicArray(size_t base, size_t offset, size_t src) {
+static inline size_t plic_array(size_t base, size_t offset, size_t src) {
   return base + offset + src * PLIC_WORDSIZE;
 }
 
 // the warl access only gives the block start based on the context. This is
 // because PLIC only uses the block start for each context to store one of
 // treshold, claim or complete registers
-static inline size_t plicWarl(size_t base, size_t offset, size_t context) {
+static inline size_t plic_warl(size_t base, size_t offset, size_t context) {
   return base + offset + context * PLIC_WARL_STRIDE;
 }
 
@@ -420,7 +429,7 @@ static inline size_t plicWarl(size_t base, size_t offset, size_t context) {
 //      id = 31 -> bit = 31 % 32 = 31
 //      id = 32 -> bit = 32 % 32 = 0
 //
-static inline size_t plicBits(size_t base, size_t offset, size_t context, size_t src) {
+static inline size_t plic_bits(size_t base, size_t offset, size_t context, size_t src) {
   return base + offset + context * PLIC_BITS_STRIDE + src / PLIC_ALIGNMENT;
 }
 
@@ -454,5 +463,187 @@ static inline size_t plicBits(size_t base, size_t offset, size_t context, size_t
 // 4096 * 15872 = 65011712(0x3e00000) bytes
 #define PLIC_COMPLETE_OFFSET 0x200004
 #define PLIC_COMPLETE_STRIDE 0x1000
+
+// uart
+
+#ifdef BOARD_QEMU_RISCV_VIRT
+#define UART_BASE (0x10000000)
+#define PLIC_SRC_UART (10)
+#else
+#define UART_BASE (0x0)
+#define PLIC_SRC_UART (0)
+#endif
+// 8 bit registers
+// +0	0	Read	RBR	Receiver Buffer
+#define UART_RBR (0x0)
+// +0	0	Write	THR	Transmitter Holding Buffer
+#define UART_THR (0x0)
+// +0	1	Read/Write	DLL	Divisor Latch Low Byte
+#define UART_DLL (0x0)
+// +1	0	Read/Write	IER	Interrupt Enable Register
+#define UART_IER (0x1)
+// +1	1	Read/Write	DLH	Divisor Latch High Byte
+#define UART_DLH (0x1)
+// +2	x	Read	IIR	Interrupt Identification Register
+#define UART_IIR (0x2)
+// +2	x	Write	FCR	FIFO Control Register
+#define UART_FCR (0x2)
+// +3	x	Read/Write	LCR	Line Control Register
+#define UART_LCR (0x3)
+// +4	x	Read/Write	MCR	Modem Control Register
+#define UART_MCR (0x4)
+// +5	x	Read	LSR	Line Status Register
+#define UART_LSR (0x5)
+// +6	x	Read	MSR	Modem Status Register
+#define UART_MSR (0x6)
+// +7	x	Read/Write	SR	Scratch Register
+#define UART_SR (0x7)
+
+// Interrupt Enable Register (IER)
+// Bit	Notes
+// 7	Reserved
+// 6	Reserved
+// 5	Enables Low Power Mode (16750)
+// 4	Enables Sleep Mode (16750)
+// 3	Enable Modem Status Interrupt
+// 2	Enable Receiver Line Status Interrupt
+// 1	Enable Transmitter Holding Register Empty Interrupt
+// 0	Enable Received Data Available Interrupt
+#define UART_IER_RX_AVAIL (1 << 0)
+#define UART_IER_TX_EMPTY (1 << 1)
+#define UART_IER_RX_LINE (1 << 2)
+#define UART_IER_MODEM (1 << 3)
+
+// Interrupt Identification Register (IIR)
+// Bit	Notes
+// 7 and 6	Bit 7	Bit 6
+// 0	0	No FIFO on chip
+// 0	1	Reserved condition
+// 1	0	FIFO enabled, but not functioning
+// 1	1	FIFO enabled
+// 5	64 Byte FIFO Enabled (16750 only)
+// 4	Reserved
+// 3, 2 and 1	Bit 3	Bit 2	Bit 1		Reset Method
+// 0	0	0	Modem Status Interrupt	Reading Modem Status Register(MSR)
+// 0	0	1	Transmitter Holding Register Empty Interrupt	Reading Interrupt Identification Register(IIR) or Writing to Transmit Holding Buffer(THR)
+// 0	1	0	Received Data Available Interrupt	Reading Receive Buffer Register(RBR)
+// 0	1	1	Receiver Line Status Interrupt	Reading Line Status Register(LSR)
+// 1	0	0	Reserved	N/A
+// 1	0	1	Reserved	N/A
+// 1	1	0	Time-out Interrupt Pending (16550 & later)	Reading Receive Buffer Register(RBR)
+// 1	1	1	Reserved	N/A
+// 0	Interrupt Pending Flag
+struct __attribute__((packed)) UartIIR {
+  uint8_t not_pending : 1;
+  enum {
+    UART_IIR_ID_MS = 0b000,
+    UART_IRR_ID_TX = 0b001,
+    UART_IIR_ID_RX = 0b010,
+    UART_IIR_ID_LS = 0b011,
+    UART_IIR_ID_TO = 0b110,
+  } id : 3;
+  uint8_t reserved : 1;
+  uint8_t fifo64 : 1;
+  enum {
+    UART_IRR_BOARD_FIFO_NOT_AVAIL = 0b00,
+    UART_IRR_BOARD_RESERVED = 0b01,
+    UART_IIR_BOARD_FIFO_BROKEN = 0b10,
+    UART_IIR_BOARD_FIFO_ENABLED = 0b11,
+  } board : 2;
+};
+
+// FIFO Control Register (FCR)
+// Bit	Notes
+// 7 & 6	Bit 7	Bit 6	Interrupt Trigger Level (16 byte)	Trigger Level (64 byte)
+// 0	0	1 Byte	1 Byte
+// 0	1	4 Bytes	16 Bytes
+// 1	0	8 Bytes	32 Bytes
+// 1	1	14 Bytes	56 Bytes
+// 5	Enable 64 Byte FIFO (16750)
+// 4	Reserved
+// 3	DMA Mode Select
+// 2	Clear Transmit FIFO
+// 1	Clear Receive FIFO
+// 0	Enable FIFOs
+#define UART_FCR_ENABLE_FIFO (1 << 0)
+#define UART_FCR_CLEAR_RX (1 << 1)
+#define UART_FCR_CLEAR_TX (1 << 2)
+#define UART_FCR_DMA_MODE (1 << 3)
+#define UART_FCR_FIFO64 (1 << 5)
+#define UART_FCR_TRIGGER_8b (0b10 << 6)
+
+// Line Control Register (LCR)
+// Bit	Notes
+// 7	Divisor Latch Access Bit
+// 6	Set Break Enable
+// 3, 4 & 5	Bit 5	Bit 4	Bit 3	Parity Select
+// 0	0	0	No Parity
+// 0	0	1	Odd Parity
+// 0	1	1	Even Parity
+// 1	0	1	Mark
+// 1	1	1	Space
+// 2	0	One Stop Bit
+// 1	1.5 Stop Bits or 2 Stop Bits
+// 0 & 1	Bit 1	Bit 0	Word Length
+// 0	0	5 Bits
+// 0	1	6 Bits
+// 1	0	7 Bits
+// 1	1	8 Bits
+#define UART_LCR_WORD_LEN_MASK (0b11)
+#define UART_LCR_PARITY_MASK (0b111 << 3)
+#define UART_LCR_WORD_LEN_8b (0b11)
+#define UART_LCR_BREAK (1 << 6)
+#define UART_LCR_DLAB (1 << 7)
+
+// Line Status Register (LSR)
+// Bit	Notes
+// 7	Error in Received FIFO
+// 6	Empty Data Holding Registers
+// 5	Empty Transmitter Holding Register
+// 4	Break Interrupt
+// 3	Framing Error
+// 2	Parity Error
+// 1	Overrun Error
+// 0	Data Ready
+struct __attribute__((packed)) UartLSR {
+  uint8_t data_ready : 1;
+  uint8_t overrun_error : 1;
+  uint8_t parity_error : 1;
+  uint8_t framing_error : 1;
+  uint8_t break_interrupt : 1;
+  uint8_t empty_thr : 1;
+  uint8_t empty_dhr : 1;
+  uint8_t error_in_rx_fifo : 1;
+};
+
+static inline void uart_write(const char c) {
+    struct UartLSR *volatile _lsr = (struct UartLSR *)(UART_BASE + UART_LSR);
+  while (!_lsr->empty_thr)
+    ;
+
+  *(volatile char *)(UART_BASE + UART_THR) = c;
+
+  if (c == '\n')
+    uart_write('\r');
+}
+
+static inline char uart_read() {
+  struct UartLSR *volatile _lsr = (struct UartLSR *)(UART_BASE + UART_LSR);
+  while (!_lsr->data_ready)
+    ;
+
+  char c = *(volatile char *)(UART_BASE + UART_RBR);
+
+  if (c == '\r')
+    c = '\n';
+
+  return c;
+}
+
+static inline void uart_flush() {
+  struct UartLSR *volatile _lsr = (struct UartLSR *)(UART_BASE + UART_LSR);
+  while (!_lsr->empty_dhr)
+    ;
+}
 
 #endif

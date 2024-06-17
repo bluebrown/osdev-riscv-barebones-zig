@@ -3,37 +3,37 @@
 // trap to be used in vectored mode.
 // FIXME: doesn save/restore registers
 .section .text
-.global   trapVector
+.global   trap_vector
 .align    2
 // instruction must be 32 bit aligned to form the
 // trap vector. on interupt the cpu will jump to
 // addr of exception code * 4(byte)
-trapVector:
-  j trap0 // 0
-  j trap0 // 1
-  j trap0 // 2
-  j trap0 // 3
-  j trap0 // 4
-  j trap0 // 5
-  j trap0 // 6
-  j trap0 // 7
-  j trap0 // 8
-  j trap0 // 9
-  j trap0 // 10
-  j trapExternal // 11
-  j trap0 // 12
-  j trap0 // 13
-  j trap0 // 14
-  j trap0 // 15
+trap_vector:
+  j trap_zero // 0
+  j trap_zero // 1
+  j trap_zero // 2
+  j trap_zero // 3
+  j trap_zero // 4
+  j trap_zero // 5
+  j trap_zero // 6
+  j trap_zero // 7
+  j trap_zero // 8
+  j trap_zero // 9
+  j trap_zero // 10
+  j trap_external // 11
+  j trap_zero // 12
+  j trap_zero // 13
+  j trap_zero // 14
+  j trap_zero // 15
 
 // trap to be used in direct mode. This is
 // currently in use. It saves and restored
-// the registers properly. calls trap0,
-// implemented in c. trap0 should return
+// the registers properly. calls trap_zero,
+// implemented in c. trap_zero should return
 .section .text
-.globl trapDirect
+.globl trap_direct
 .align 2
-trapDirect:
+trap_direct:
   // make room for 30 registers on the stack
   // using addi. 32-2 (x0 and tp (x4))
   addi sp, sp, -120
@@ -72,7 +72,7 @@ trapDirect:
   sw x31, 116(sp)
 
   // call the trap handler
-  call trap0
+  call trap_zero
 
   // retore registers
   lw  x1,   0(sp)
